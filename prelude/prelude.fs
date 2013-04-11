@@ -55,6 +55,8 @@ let inline swap (x,y) = (y,x)
 
 let inline fst3 (a,b,c) = a
 
+let fst4 (a,b,c,d) = a
+ 
 let inline snd3 (_,b,_) = b
 
 let inline snd4 (a,b,_,_) = b
@@ -111,6 +113,8 @@ let inline charStr (s:string) = s.ToCharArray()  |> Array.map string
 
 let inline splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
 
+let splitToWords = splitstr [|"." ; " "; "," ; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "'"; "(" ; ")"; "\000"; Environment.NewLine|]
+
 let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
 
 let inline tolower (str:string) = str.ToLower()
@@ -123,12 +127,11 @@ let inline counts (v:seq<'a>) =  v |> Seq.fold mapAdd Map.empty
 
 let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
-let modeRaw (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))  
+let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))  
  
 let inline sumMap m = m |> Map.fold (curryfst (+)) 0. 
  
 let inline sumMapGen f m = m |> Map.fold (curryfst ((+) >> f)) 0. 
-
 
 ////////////////////////////////////////////////
 
@@ -174,9 +177,10 @@ let fold cond func seed =
       | state when cond state -> state 
       | state -> inner (func state)
     inner seed    
-
-let bitsToByte (b:Collections.BitArray) = 
-     let a = [|0uy|] in b.CopyTo(a,0) ; a.[0] 
+     
+let eightBitsToByte (b:Collections.BitArray) = 
+     let a = [|0uy|]
+     b.CopyTo(a,0) ; a.[0] 
 
 let toBool = (string >> (<>) "0")
 
