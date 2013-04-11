@@ -129,45 +129,7 @@ let inline sumMap m = m |> Map.fold (curryfst (+)) 0.
  
 let inline sumMapGen f m = m |> Map.fold (curryfst ((+) >> f)) 0. 
 
-//////////////////////////////////////////2D ARRAYS/////////
 
-let foldRow2D, foldCol2D = 1, 0                     
-
-let inline (@@) (m: 'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i])
-let inline (@.) (m: 'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
-
-let inline cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[i,k]
-
-let arr2DFoldAt r k (m : 'a [,]) f seed = 
-        let top = m.GetLength(r)
-        let rec fold state = function
-                | i when i = top -> state
-                | i -> fold (f state (cIndex r k i m)) (i + 1)
-        fold seed 0   
-
-let arr2DFoldGen index (m : 'a [,]) f seed =
-        let ix , xi = if index = 1 then 0, 1 else 1, 0 // fold by row or fold by column
-        let top = m.GetLength(ix)   
-        let rec fold state = function | i when i = top -> state 
-                                      | i -> fold (arr2DFoldAt xi i m f state) (i+1)
-        fold seed 0 
-
-let arr2DFold (m : 'a [,]) f seed = arr2DFoldGen 1 m f seed
-
-let arr2DFoldCol (m : 'a [,]) f seed = arr2DFoldGen 0 m f seed   
-
-let pmap2D mapf (array:'a [,]) = 
-        let r , c = array.GetLength(0) , array.GetLength(1) 
-        let narray = Array2D.create r c (mapf array.[0,0])
-        Parallel.For( 0, r, fun i -> for j in 0..c-1 do narray.[i, j] <- mapf array.[i, j]) |> ignore   
-        narray   
-
-//type Array with 
-//   static member pfold func (seed:'b) (array:'a[]) =
-//         let grown = ref seed         
-//         Parallel.ForEach(array, (fun it -> lock grown (fun () -> grown := (func !grown it)))) |> ignore
-//         !grown
-       
 ////////////////////////////////////////////////
 
 type MaybeBuilder() =
