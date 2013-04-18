@@ -131,9 +131,20 @@ let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
  
 let inline sumMap m = m |> Map.fold (curryfst (+)) 0. 
  
-let inline sumMapGen f m = m |> Map.fold (curryfst ((+) >> f)) 0. 
+let inline sumMapGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
 ////////////////////////////////////////////////
+
+///A nested if builder is a maybe modified to work with raw conditional tests
+type NestedIfBuilder() =
+    member this.Bind(x, f) =
+       if x then f x
+       else None 
+    member this.Delay(f) = f()
+    member this.Return(x) = Some x
+    member this.ReturnFrom(x) = x
+
+let nestif = NestedIfBuilder() 
 
 type MaybeBuilder() =
     member this.Bind(x, f) =
