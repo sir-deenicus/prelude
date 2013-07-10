@@ -2,8 +2,6 @@
 
 let foldRow2D, foldCol2D = 1, 0                     
 
-let inline (@@) (m: 'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i])
-let inline (@.) (m: 'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
 let inline cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[i,k]
 
@@ -25,11 +23,33 @@ let arr2DFold (m : 'a [,]) f seed = arr2DFoldGen 1 m f seed
 
 let arr2DFoldCol (m : 'a [,]) f seed = arr2DFoldGen 0 m f seed   
 
-let pmap2D mapf (array:'a [,]) = 
-        let r , c = array.GetLength(0) , array.GetLength(1) 
-        let narray = Array2D.create r c (mapf array.[0,0])
-        Parallel.For( 0, r, fun i -> for j in 0..c-1 do narray.[i, j] <- mapf array.[i, j]) |> ignore   
-        narray   
+let distCov (v1:float[]) (v2:float[]) same = 
+    let n = v1.Length
+    let nf = float n 
+    let denum =  nf ** 2.  
+    let distMatrix (v:float[]) = Array2D.init v.Length v.Length (fun k l -> abs (v.[k] - v.[l]))  
+    let rowMean (m:float[,]) k = (arr2DFoldAt 1 k m (+) 0.)/nf  
+    let colMean (m:float[,]) l = (arr2DFoldAt 0 l m (+) 0.)/nf               
+    let matrixMean (m:float[,]) = (arr2DFold m (+) 0.) / denum 
+
+    let centredDist (v:float[]) = 
+        let distm = distMatrix v
+        let meanoverall = matrixMean distm   
+        let C = Array2D.create n n 0.
+        Threading.Tasks.Parallel.For(0, n, fun i -> 
+                        let curRowMean = rowMean distm i
+                        for j in 0..n - 1 do 
+                            C.[i,j] <- distm.[i,j] - curRowMean - (colMean distm j) + meanoverall  ) |> ignore
+        C
+             
+    let A,B  = 
+            if same then let A2 = centredDist v1 in A2, A2   
+            else let AB = [| async {return centredDist v1}
+                             async {return centredDist v2} |] |> Async.Parallel |> Async.RunSynchronously 
+                 AB.[0], AB.[1]
+    let _,_,msum = arr2DFold A (fun (i,j,curSum) value -> let nsum = value * B.[i,j] + curSum  
+                                                          if j = n - 1 then i+1, 0,nsum else i, j+1,nsum) (0,0,0.)  
+    msum  / denum    
 
 //type Array with 
 //   static member pfold func (seed:'b) (array:'a[]) =

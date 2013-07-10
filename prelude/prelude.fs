@@ -56,6 +56,8 @@ let inline swap (x,y) = (y,x)
 let inline fst3 (a,b,c) = a
 
 let fst4 (a,b,c,d) = a
+
+let fst5 (a,b,c,d,e) = a
  
 let inline snd3 (_,b,_) = b
 
@@ -70,13 +72,19 @@ let inline fourth (_,_,_,el) = el
 let inline fifth (_,_,_,_,el,_,_) =  el
 
 let inline sixth (_,_,_,_,_,el,_) =  el
-
+     
 type Array with
- member inline t.unzip5 (arr : ('a * 'b * 'c * 'd * 'e )  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5) (d1,d2,d3,d4,d5) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 ) ([],[],[],[],[])
- member inline t.unzip7 (arr : ('a * 'b * 'c * 'd * 'e * 'f * 'g)  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5,l6,l7) (d1,d2,d3,d4,d5,d6,d7) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 , d6::l6, d7::l7) ([],[],[],[],[],[],[])
- member inline t.collapse7 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5,d6,d7) -> [|d1;d2;d3;d4;d5;d6;d7|]) 
- member inline t.collapse5 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5) -> [|d1;d2;d3;d4;d5|]) 
-
+ static member Op operator a b = Array.map2 operator a b 
+ static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
+ static member magnitude v = Array.dotproduct v v |> float |> sqrt 
+ static member inline unzip5 (arr : ('a * 'b * 'c * 'd * 'e )  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5) (d1,d2,d3,d4,d5) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 ) ([],[],[],[],[])
+ static member inline unzip7 (arr : ('a * 'b * 'c * 'd * 'e * 'f * 'g)  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5,l6,l7) (d1,d2,d3,d4,d5,d6,d7) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 , d6::l6, d7::l7) ([],[],[],[],[],[],[])
+ static member inline collapse7 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5,d6,d7) -> [|d1;d2;d3;d4;d5;d6;d7|]) 
+ static member inline collapse5 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5) -> [|d1;d2;d3;d4;d5|]) 
+ static member inline cosineDistance v1 v2 =
+    Array.dotproduct v1 v2 / ((Array.magnitude v1 * Array.magnitude v2)  + 0.0001)
+ 
+let z = Array.dotproduct [|2; 3|] [|2; 1|]    
 //////////////////MAPS/////////////////////////////////
 
 // add to a map item a with f to alter a as key and an alter of vlue with initial i
@@ -85,6 +93,18 @@ let keyValueToKey (kv:KeyValuePair<_,_>) = kv.Key
 let keyValueToValue (kv:KeyValuePair<_,_>) = kv.Value  
 let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value  
 
+let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
+
+type Dictionary<'a,'b> with
+  member this.getOrDef key def = if this.ContainsKey(key) then this.[key] else def 
+ ///Fold over values in dictionary
+  member this.foldv f init = this.Values |> Seq.fold f init
+  member this.mapAdd key f def =
+     if this.ContainsKey(key) then
+        this.[key] <- f (this.[key])
+     else
+       this.Add(key,def)
+        
 let mapAddGeneric map key f initial = 
     if map |> Map.containsKey key then
         Map.add key (f map.[key]) map
@@ -134,6 +154,14 @@ let inline sumMap m = m |> Map.fold (curryfst (+)) 0.
 let inline sumMapGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
 ////////////////////////////////////////////////
+let pmap2D mapf (array:'a [,]) = 
+        let r , c = array.GetLength(0) , array.GetLength(1) 
+        let narray = Array2D.create r c (mapf array.[0,0])
+        Parallel.For( 0, r, fun i -> for j in 0..c-1 do narray.[i, j] <- mapf array.[i, j]) |> ignore   
+        narray   
+
+let inline (@@) (m: 'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i])
+let inline (@.) (m: 'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
 ///A nested if builder is a maybe modified to work with raw conditional tests
 type NestedIfBuilder() =
@@ -197,7 +225,9 @@ let toBool = (string >> (<>) "0")
 
 let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1).ToUniversalTime()).TotalSeconds 
 
-let fromUnixTime timestamp =   DateTime(1970,1,1,0,0,0,0).AddSeconds(timestamp).ToUniversalTime()
+let fromUnixTime timestamp =   DateTime(1970,1,1,0,0,0,0).AddSeconds(timestamp)
+
+let fromUnixTimeMicroSec timestamp = DateTime(1970,1,1,0,0,0,0).AddMilliseconds(timestamp/1000.)
 
 //http://madskristensen.net/post/Generate-unique-strings-and-numbers-in-C.aspx
 let generateId () = 
