@@ -28,6 +28,74 @@ let LevenshteinDistance (word1:string) (word2:string) =
 
 let hamming a (b:'a[]) = a |> Array.fold (fun (sum,i) ax -> (sum + if ax <> b.[i] then 1 else 0), i + 1) (0,0) |> fst
 
+///pads out unequal arrays
+let hammingpad (a:string) (b:string) =
+    let smaller (a:string) (b:string)  = if a.Length > b.Length then b,a else a,b
+    let diff = abs(a.Length - b.Length)
+    let small, big = smaller a b
+    let sp = small + String(' ', diff) 
+    hamming (charArr big) (charArr sp)
+
+let bithamming (a:byte[]) (b:byte[]) =  
+    let v = (a.[1..a.Length - 1], b.[1..a.Length - 1]) ||> Array.fold2 (fun s a1 b1 -> a1 ^^^ b1 ^^^ s) (a.[0] ^^^ b.[0])
+    let rec z d = function
+        | v when v = 0uy -> d 
+        | v -> z (d + 1) (v &&& v - 1uy)
+    z 0 v
+     
+let damerauLevenshteinDistance (arr1:'a []) (arr2:'a []) =  
+    let wrap j k = if j = k then arr2.Length else j - 1 - k 
+    let rec outer (oneback:int[]) (twoback:int[]) s = function
+       | i when i = arr1.Length || arr2.Length = 0 -> s
+       | i ->  let thisrow = Array.zeroCreate (arr2.Length+1) in thisrow.[thisrow.Length - 1] <- i + 1 
+               for j in 0..arr2.Length - 1 do 
+                    let delcost, addcost, subcost = oneback.[j] + 1, thisrow.[wrap j 0] + 1,
+                                                                oneback.[wrap j 0] + if arr1.[i] <> arr2.[j] then 1 else 0
+                    thisrow.[j] <- [delcost; addcost; subcost] |> List.min                    
+                    if i > 0 && j > 0 && arr1.[i] = arr2.[j-1] && arr1.[i - 1] = arr2.[j] && arr1.[i] <> arr2.[j] then
+                                                    thisrow.[j] <-  min (thisrow.[j]) (twoback.[wrap j 1] + 1)     
+               outer thisrow oneback thisrow.[arr2.Length - 1] (i + 1) 
+    outer (Array.append (Array.init arr2.Length ((+) 1)) [|0|]) (Array.zeroCreate (arr2.Length+1)) (max arr1.Length arr2.Length) 0
+    
+let longestCommonSubSeq(word1:string) (word2:string) =  
+     let d = Array2D.create (word1.Length + 1) (word2.Length + 1) 0
+     d |> Array2D.iteri (fun i j a -> if i = 0 || j = 0 then ()
+                                      else if word1.[i-1] = word2.[j-1] then d.[i,j]  <- d.[i-1,j-1] + 1
+                                      else d.[i,j] <- max d.[i, j-1] d.[i-1 , j])
+     d.[word1.Length,word2.Length], word1.Length, word2.Length, d
+
+let rec backtrackLCS(lcsMatrix:int[,]) (str1:string) (str2:string) i j = 
+    if i = 0 || j = 0 then  ""
+    elif  str1.[i - 1] = str2.[j - 1] then
+         backtrackLCS lcsMatrix str1 str2 (i-1) (j-1) + string str1.[i - 1]
+    else
+        if lcsMatrix.[i,j-1] > lcsMatrix.[i-1,j] then
+             backtrackLCS lcsMatrix  str1 str2 i (j-1)
+        else
+             backtrackLCS lcsMatrix str1 str2 (i-1) j
+
+let longestCommonSubstring (str1:string) (str2: string) =
+    let L = Array2D.create str1.Length str2.Length 0
+    let mutable z = 0
+    let mutable ret = set []
+    let m,n = str1.Length - 1, str2.Length - 1
+    for i in 0..m do
+        for j in 0..n do
+            if str1.[i] = str2.[j] then
+                if i = 0 || j = 0 then
+                    L.[i,j] <- 1
+                else
+                    L.[i,j] <- L.[i-1,j-1] + 1
+                if L.[i,j] > z then
+                    z <- L.[i,j]
+                    ret <- set ( [str1.[i-z+1..i]])
+                if L.[i,j] = z then
+                    ret <- ret.Add( str1.[i-z+1..i ] )
+            else L.[i,j]<- 0
+    ret    
+    
+//----------MINHASHING--------------
+  
 //splits like "abcd" -> "ab" "cd"
 let inline internal splits hashfunc f op c (data:'a []) =   
   data
