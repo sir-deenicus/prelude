@@ -231,6 +231,10 @@ module Array2D =
   
   let fold f seed (m:'a[,]) = m |> foldGen 1 f seed
 
+  let (--.) (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i]) 
+   
+  let (|.) (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
+
 /////////////////////////////STRINGS////////////////////
 
 let inline joinToStringWith sep (s:'a seq) = String.Join(sep, s)
