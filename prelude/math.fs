@@ -1,6 +1,22 @@
 ﻿module Prelude.Math
+
+open System.Threading.Tasks
 open Prelude.Common
 open System
+
+let random = new Random() 
+
+let pi = Math.PI 
+
+let inline squared (x: ^a) = x * x  
+
+let log2 = log >> (flip (/) (log 2.)) 
+
+let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =
+    for i in 0..a1.Length - 1 do 
+       a1.[i] <- a1.[i] + a2.[i]
+
+//***************************BASIC STATS******************//
 
 ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
 let simpleStats (vec : float[]) (vec2 : float[]) =   
@@ -37,18 +53,14 @@ let varianceFromMean mean = function
                
 let stddev l = varianceAndMean l |> snd |> sqrt
 
-let random = new Random() 
-
-let pi = Math.PI 
-
-let inline squared (x: ^a) = x * x 
-
 /// O(n log n) median
 let inline median (x: ^a [])= 
     let sorted = (x |> Array.sort)
     let xlen, xlenh = x.Length, x.Length / 2  
     if xlen % 2 = 0 then float(sorted.[xlenh] + sorted.[xlenh - 1]) / 2.
     else float(sorted.[xlen / 2]) 
+
+//***************************PERMUTATIONS******************//
 
 let permute (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
 
@@ -60,45 +72,43 @@ let permuteYates (arr : ' a[]) =
              swapArr n randN arr
              doswaps (n - 1)
    doswaps (arr.Length - 1) 
- 
+
+type System.Random with
+    member t.NextDouble(minim, maxim) =  t.NextDouble() * (maxim - minim) + minim 
+
+//***************************ROUNDING******************//
+
 let inline round (places:int) (num: float) = Math.Round(num, places)
 
+///buckets rounds a number to roundTo places then buckets with bucketSize. where all numbers are floored to last 
+///multiple of bucketSize so for example
+///bucketRange 2 5 n will round to 2 places and allow only multiples of 5. n = 11..14 -> 10
+///and n = 15..19 -> 15. for 2 0.5 n, n = 21.0..21.4 -> 21 and n = 21.5..21.9 go to 21.5, integers are unaffected 
 let inline bucketRange roundTo bucketSize m = 
    let num = (round roundTo m) 
    if num < bucketSize then num else num - num % bucketSize
 
+///scaleTo scales a number to rmin and rmax where rangemin and max are the expected range of the number.
+///examples: scaleTo -10 10 -1000. 1000. -10. = -0.1, a number with range
+///-1000 to 1000 is fit to -10 by 10, scaleTo 0 10 0 100 50 = 5.
 let scaleTo rmin rmax rangemin rangemax value =
    let adjrmin, adjrmax, adjval = if rangemin < 0. then 0., -rangemin + rangemax , -rangemin + value 
                                   else rangemin, rangemax , value //translate to 0
     
    (adjval - adjrmin)/(adjrmax - adjrmin) * (rmax-rmin) + rmin
    
-type System.Random with
-    member t.NextDouble(minim, maxim) =  t.NextDouble() * (maxim - minim) + minim 
+//***************************Array Useful Vector Math******************//
 
-let internal foldRow2D, foldCol2D = 1, 0                     
+type Array with
+ static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty
+ static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
+ static member inline magnitude v = Array.dotproduct v v |> sqrt 
+ static member inline cosineSimilarity v1 v2 tol =
+    Array.dotproduct v1 v2 / ((Array.magnitude v1 * Array.magnitude v2) + tol)
 
-let inline internal cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[i,k]
+/////////////////////////////
 
-module Array2D =
-  let foldAt dimension rowOrCol f seed (m:'a[,]) = 
-        let top = m.GetLength(dimension)
-        let rec fold state = function
-                | i when i = top -> state
-                | i -> fold (f state (cIndex dimension rowOrCol i m)) (i + 1)
-        fold seed 0   
- 
-  ///fold at row or column
-  let foldGen index f seed (m:'a[,]) =
-        let ix , xi = if index = 1 then 0, 1 else 1, 0 // fold by row or fold by column
-        let top = m.GetLength(ix)   
-        let rec fold state = function | i when i = top -> state 
-                                      | i -> fold (m |> foldAt xi i f state) (i+1)
-        fold seed 0  
-  
-  let fold f seed (m:'a[,]) = m |> foldGen 1 f seed
-
-let distCov (v1:float[]) (v2:float[]) same = 
+let distCovariance (v1:float[]) (v2:float[]) same = 
     let n = v1.Length
     let nf = float n 
     let denum =  nf ** 2.  
@@ -127,12 +137,13 @@ let distCov (v1:float[]) (v2:float[]) same =
                                                if j = n - 1 then i+1, 0,nsum else i, j+1,nsum) (0,0,0.)  
     msum  / denum    
 
-let distCorr v1 v2 = 
-    let VXY = [| async { return distCov v1 v1 true }
-                 async { return distCov v2 v2 true} |] |> Async.Parallel |> Async.RunSynchronously 
+///Distance Correlation is a useful method of calculating correlation with distance covariance that is able to pick up on non-linearities unlike Pearson's. And more flexible than Spearman's rank.
+let distCorrelation v1 v2 = 
+    let VXY = [| async { return distCovariance v1 v1 true }
+                 async { return distCovariance v2 v2 true} |] |> Async.Parallel |> Async.RunSynchronously 
     let vsig = VXY.[0] * VXY.[1] 
     if vsig = 0. then 0. 
-    else sqrt((distCov v1 v2 false) / sqrt vsig)    
+    else sqrt((distCovariance v1 v2 false) / sqrt vsig)    
 
 
  

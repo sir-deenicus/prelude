@@ -37,9 +37,9 @@
   </PropertyGroup>
   <Import Project="$(MSBuildExtensionsPath32)\..\Microsoft SDKs\F#\3.0\Framework\v4.0\Microsoft.FSharp.Targets" Condition=" Exists('$(MSBuildExtensionsPath32)\..\Microsoft SDKs\F#\3.0\Framework\v4.0\Microsoft.FSharp.Targets')" />
   <ItemGroup>
-    <None Include="Script.fsx" />
     <Compile Include="prelude.fs" />
     <Compile Include="math.fs" />
+    <Compile Include="StringMetrics.fs" />
     <Content Include="no longer useful.txt" />
   </ItemGroup>
   <ItemGroup>
