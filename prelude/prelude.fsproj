@@ -41,6 +41,13 @@
     <Compile Include="math.fs" />
     <Compile Include="StringMetrics.fs" />
     <Content Include="no longer useful.txt" />
+    <Compile Include="Trie.fs" />
+    <Compile Include="TrieStringSearch.fs" />
+    <Compile Include="pseq.fsi" />
+    <Compile Include="pseq.fs" />
+    <Compile Include="Reducers.fs" />
+    <None Include="some tests.fsx" />
+    <Compile Include="AgentDataStructures.fs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="mscorlib" />

@@ -84,6 +84,10 @@ let inline flip f a b = f b a
 
 let inline flipApply  f1 f2 e = f2 (f1 e) 
 
+let inline keepLeft f (x,y) = x , f y
+
+let inline keepRight f (x,y) = f x , y
+
 //no overhead as far as I can see
 let inline (</) x f = f x
  
@@ -91,19 +95,21 @@ let inline (/>) f y = (fun x -> f x y)
 
 /////SEQUENCES///////////////
 
+let filterMapTrunc n cond f seqs =
+    let counter = ref 0
+    seq {for el in seqs do 
+          if !counter <> n then  
+           if cond el then incr counter; yield f el}    
+
 let filterMap cond f seqs = seq {for el in seqs do if cond el then yield f el} 
 
 let mapFilter f cond seqs = seq {for el in seqs do let mapped = f el in if cond mapped then yield mapped} 
 
-let splitArrEvenly ways (arr:'a[]) =
-    let steps = max (arr.Length / ways) 1
-    [| for i in 0..steps..arr.Length - steps -> arr.[i..i + steps - 1]|]
-
 let inline contains c l = Seq.exists (fun item -> item = c) l 
 
-let splitArrayByPercent p (array : 'a []) = 
-    let take = int(float(array.Length) * p)
-    array.[0..take], array.[take+1..array.Length-1] 
+let containsAll (tests : 'a seq) (items : 'a seq) = (set tests).IsSubsetOf (set items) 
+
+let containsOneOf (tests : 'a seq) (items : 'a seq) = Set.intersect (set tests) (set items) |> Set.count > 1 
 
 let swapArr i j (arr:'a[]) =
     let k = arr.[i]
@@ -130,17 +136,10 @@ let inline third4 (_,_,c,_) = c
 
 let inline fourth (_,_,_,el) = el
 
-let inline fifth (_,_,_,_,el,_,_) =  el
+let inline fifth7 (_,_,_,_,el,_,_) =  el
 
-let inline sixth (_,_,_,_,_,el,_) =  el
-      
-type Array with 
- static member inline unzip5toList (arr : ('a * 'b * 'c * 'd * 'e )  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5) (d1,d2,d3,d4,d5) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 ) ([],[],[],[],[])
- static member inline unzip7toList (arr : ('a * 'b * 'c * 'd * 'e * 'f * 'g)  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5,l6,l7) (d1,d2,d3,d4,d5,d6,d7) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 , d6::l6, d7::l7) ([],[],[],[],[],[],[])
- static member inline collapse7 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5,d6,d7) -> [|d1;d2;d3;d4;d5;d6;d7|]) 
- static member inline collapse5 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5) -> [|d1;d2;d3;d4;d5|]) 
- 
-  
+let inline sixth7 (_,_,_,_,_,el,_) =  el
+
 //////////////////MAPS/////////////////////////////////
 
 // add to a map item a with f to alter a as key and an alter of vlue with initial i
@@ -151,16 +150,29 @@ let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value
 
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
+type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b>
 //combinators don't make sense for mutable types
 type Dictionary<'a,'b> with
+  static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
   member this.getOrDef key def = if this.ContainsKey(key) then this.[key] else def 
+  member this.tryFind key = if this.ContainsKey(key) then Some this.[key] else None 
  ///Fold over values in dictionary
-  member this.foldv f init = this.Values |> Seq.fold f init
-  member this.mapIfExistsAdd key f def =
+  member this.foldV f init = this.Values |> Seq.fold f init
+  member this.ExpandElseAdd key expand def =
      if this.ContainsKey(key) then
-        this.[key] <- f (this.[key])
+        this.[key] <- expand (this.[key])
      else
-       this.Add(key,def)
+       this.Add(key,def) 
+
+  member this.GetElseAdd key def = if this.ContainsKey(key) then this.[key] else this.Add(key,def); def 
+
+  member this.foldKV f init = this |> Seq.fold f init
+
+  member this.fold f init = 
+     let mutable x = init
+     for (DictKV(k,v)) in this do
+       x <- f x k v 
+     x
         
 let mapAddGeneric map key f initial = 
     if map |> Map.containsKey key then
@@ -175,7 +187,14 @@ let inline mapGetAdd map key defaultValue =
    if Map.containsKey key map then map.[key], map else defaultValue, map.Add(key, defaultValue)
 
 module Map =
-    let inline sum m = m |> Map.fold (curryfst (+)) 0. 
+    let inline sum m = m |> Map.fold (curryfst (+)) 0.  
+
+    ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
+    ///it is clear that the function will run more efficiently
+    let merge combine wrap smallermap biggermap = 
+      smallermap |> Map.fold (fun newmap key value -> 
+                                   mapAddGeneric newmap key (combine value) (wrap value))
+                                   biggermap
  
     let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
@@ -185,7 +204,13 @@ let internal foldRow2D, foldCol2D = 1, 0
 
 let inline internal cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[i,k]
 
+module List =
+  let inline sortByDescending f = List.sortBy (fun x -> -1. * float(f x))
+
 type Array with  
+  static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x))  
+  static member inline subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
+  static member inline get2 loc (a:'a[]) = a.[loc] 
   static member inline countElements array = array |> Array.fold mapAdd Map.empty 
   static member countElementsMapThenFilter f filter array = 
        array |> Array.fold (fun counts item -> 
@@ -195,8 +220,25 @@ type Array with
   static member countAndMax array =  
      let counts = array |> Array.countElements 
      counts, counts |> (Seq.maxBy keyValueToValue) |> keyValueToPair
-      
+  static member  mapFilter f cond (seqs:'a[]) = [|for el in seqs do let mapped = f el in if cond mapped then yield mapped|] 
   static member sub2 start ends (arr:'a []) = arr.[start..ends]
+  static member filterMap cond f seqs = [|for el in seqs do if cond el then yield f el|]
+  static member splitEvenly ways (arr:'a[]) =
+                 let steps = max (arr.Length / ways) 1
+                 [| for i in 0..steps..arr.Length - steps -> arr.[i..i + steps - 1]|]
+
+  static member splitByPercent p (array : 'a []) = 
+    let take = int(float(array.Length) * p)
+    array.[0..take], array.[take+1..array.Length-1] 
+
+  
+  static member inline unzip5toList (arr : ('a * 'b * 'c * 'd * 'e )  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5) (d1,d2,d3,d4,d5) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 ) ([],[],[],[],[])
+  static member inline unzip7toList (arr : ('a * 'b * 'c * 'd * 'e * 'f * 'g)  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5,l6,l7) (d1,d2,d3,d4,d5,d6,d7) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 , d6::l6, d7::l7) ([],[],[],[],[],[],[])
+  static member inline collapse7 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5,d6,d7) -> [|d1;d2;d3;d4;d5;d6;d7|]) 
+  static member inline collapse5 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5) -> [|d1;d2;d3;d4;d5|]) 
+ 
+module Tuple =
+  let toArray5 (a,b,c,d,e) = [|a;b;c;d;e|]
 
 //---------Array 2D----------
 type 'a ``[,]`` with
@@ -236,6 +278,43 @@ module Array2D =
   let (|.) (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
 /////////////////////////////STRINGS////////////////////
+//These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
+//not worth it for more general code
+let removeExtraSpaces (s:string) = 
+      let sb = Text.StringBuilder()
+      s |> Seq.fold (fun waslastspace curchar -> 
+                       if curchar = ' ' && waslastspace = true then true 
+                       else sb.Append(curchar) |> ignore
+                            curchar = ' ') false |> ignore
+      sb.ToString().Trim()
+
+let removeExtraStrings (strToStrip:string) (s:string) = 
+      let sb = Text.StringBuilder()
+      s |> Seq.fold ( fun waslastX curchar -> 
+                       let curstr = string curchar
+                       if curstr = strToStrip && waslastX = true then true 
+                       else sb.Append(curstr) |> ignore
+                            curstr = strToStrip) false |> ignore
+      sb.ToString().Trim()
+
+let removeExtraChar (charToStrip:char) (s:string) = 
+      let sb = Text.StringBuilder()
+      s |> Seq.fold ( fun waslastX curchar ->  
+                       if curchar = charToStrip && waslastX = true then true 
+                       else sb.Append(curchar) |> ignore
+                            curchar = charToStrip) false |> ignore
+      sb.ToString().Trim()
+
+let removeExtraChars (charsToStrip:char[]) (s:string) = 
+      let sb = Text.StringBuilder()
+      s |> Seq.fold ( fun waslastX curchar ->  
+                       let skipchar = contains curchar charsToStrip
+                       if skipchar && waslastX = true then true 
+                       else sb.Append(curchar) |> ignore
+                            skipchar) false |> ignore
+      sb.ToString().Trim()
+//-------------
+let newLine = Environment.NewLine
 
 let inline joinToStringWith sep (s:'a seq) = String.Join(sep, s)
 
@@ -243,54 +322,83 @@ let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
 
 let inline joinToString s = joinToStringWith "" s
 
+///= [|'.' ; ' '; ',' ; '\t'; '?'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; Environment.NewLine; '—'; '<'; '>';'[';']';'“'|]
+let splitChars = [|'.' ; ' '; ',' ; '\t'; '?'; '\"'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; '\n'; '—'; '<'; '>';'[';']';'“'|]
+
+let superflouschars = [|' '; ','; '.'; '\"' ; '?';'!'; ';'; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'; '\010' ; '\000'|]
+
+let inline trim (str: string) = str.Trim()
+
+///trims with passed array, variable superflouschars provides: ' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'
+let trimWith charsToTrim (s:string) = s.Trim(charsToTrim)
+
+///charArr (s:string) = s.ToCharArray()
 let inline charArr (s:string) = s.ToCharArray()
 
-let inline charStr (s:string) = s.ToCharArray()  |> Array.map string   
+///s.ToCharArray() |> Array.map string 
+let inline charStr (s:string) = s.ToCharArray() |> Array.map string   
 
 let inline splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
 
-let splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, @"(?<=(?<![\d.\d])[\n.?!])")
+let inline splitstrWithSpace (str : string) = str.Split([|" "|], StringSplitOptions.RemoveEmptyEntries) 
 
-///splits to words using the following characters: [|"." ; " "; "," ; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "'"; "(" ; ")"; "\000"; Environment.NewLine|]
-let splitToWords = splitstr [|"." ; " "; "," ; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "'"; "(" ; ")"; "\000"; Environment.NewLine|]
+let inline splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, @"(?<=(?<![\d.\d])[\n.?!])")
+
+let internal slpitStrs = [|"." ; " "; "," ; "\t"; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "(" ; ")"; "\000"; Environment.NewLine; "—"; "<"; ">";"[";"]";"“"|]
+ 
+///splits to words using the following characters: \s \t . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
+let splitToWords = splitstr slpitStrs
+///Like regular splitToWords but uses a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
+let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;!#\|\010/\\""()\000\n—\[\]“\>\<]") |> Array.filterMap ((<>) "") (trimWith superflouschars)
 
 let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
 
 let inline tolower (str:string) = str.ToLower()
 
-let superflouschars = [|' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';' ; '\''; '”'|]
-
-let inline trim (str: string) = str.Trim()
-
-///trims with passed array, variable superflouschars provides: [|' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';' ; '\''; '”'|]
-let trimWith charsToTrim (s:string) = s.Trim(charsToTrim)
+let inline toupper (str:string) = str.ToUpper()
 
 ///true when [sub]string is contained in [s]tring
-let strcontains (sub:string) (s:string) = s.Contains(trim sub)
+let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
+
+///true when [sub]string is contained in [s]tring
+let inline containedinStr (s:string) (sub:string) = s.Contains(trim sub)
 
 let (|StrContains|_|) testString (str : string) = 
    if str.Contains(testString) then Some(true) else None  
 
 let (|StrContainsOneOf|_|) (testStrings : string[]) str = 
-     testStrings |> Array.tryFind (strcontains str)  
+     testStrings |> Array.tryFind (containedinStr str)  
 
 let (|StrContainsAll|_|) (testStrings : string[]) str  = 
-   nestif {return (testStrings |> Array.forall (strcontains str))}
+   nestif {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
 
-/////////////////COUNTING///////////////////////
+let (|StrContainsRemove|_|) t (str : string) = 
+   if str.Contains(t) then Some(str.Replace(t,"")) else None 
+
+module String =
+  let seperateStringByCaps (s:string) = 
+     let outString = Text.StringBuilder()
+     for c in s do
+       if Char.IsUpper c then outString.Append(' '); outString.Append(c)
+       else outString.Append c
+     outString.ToString()  
+/////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
+
+type MutableList<'a> = System.Collections.Generic.List<'a>
+type Hashset<'a> = System.Collections.Generic.HashSet<'a>
 
 type System.Collections.Generic.List<'a> with
    static member Length (glist : Collections.Generic.List<'a>) = glist.Count
 
 module Seq =
-  let inline sortByDescending f = Seq.sortBy (fun x -> -1 * int(f x))
+  let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float(f x))
  
   let inline counts (v:seq<'a>) =  v |> Seq.fold mapAdd Map.empty
 
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
   let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))  
- 
+
 ////////////////////////MISC////////////////////////
 
 ///Similar structure to Unfold but does not generate sequences and meant to be used in place of loops.
@@ -347,6 +455,19 @@ let inline jenkinsOAThashGeneric (key: ^a []) =
     currenthash  
 
 //-------------------------
+
+///really semantic sugar for set.min
+let minhash hset = hset |> Set.minElement  
+
+let minhashes maxiter fset = 
+ let rec gethashes count minset fullset = 
+  match count with
+   | i when i >= maxiter  || Set.count fullset = 0 -> minset
+   | i -> let minim = minhash fullset
+          gethashes (i + 1) (Set.add minim minset) (Set.remove minim fullset) 
+ gethashes 0 Set.empty fset
+
+//////////////////////////////////
 
 type IO.File with
  static member ReadAllTextOrCreate(fname:string) =
