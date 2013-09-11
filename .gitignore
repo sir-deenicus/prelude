@@ -27,6 +27,11 @@ local.properties
 
 # PDT-specific
 .buildpath
+#############Project
+Rx*
+*.fsi
+WebCrawler.fs
+SuffixTreeParallel.fsx
 
 
 #################

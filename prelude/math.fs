@@ -144,14 +144,16 @@ let scaleTo rmin rmax rangemin rangemax value =
 //***************************Array Useful Vector Math******************//
 
 type Array with
- static member inline permute (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
+ static member inline permute2 (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
  static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty
  static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
  static member inline magnitude v = Array.dotproduct v v |> sqrt 
  static member inline normalize (data: ^a[]) = 
      let total = data |> Array.sum
      data |> Array.map (flip (/) total) 
-
+ 
+  
+ static member sampleOne (a:'a[]) = a.[random.Next(a.Length)]
  static member inline normalizeBy f (data: ^a []) = 
      let total = data |> Array.sumBy f
      data |> Array.map (f >> flip (/) total)
