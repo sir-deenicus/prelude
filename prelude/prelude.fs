@@ -6,6 +6,9 @@ open System
 open System.Collections.Generic  
 open System.Threading.Tasks
 
+type MutableList<'a> = System.Collections.Generic.List<'a>
+type Hashset<'a> = System.Collections.Generic.HashSet<'a>
+
 ///////BASIC MONADS
 
 ///A nested if builder is a maybe modified to work with raw conditional tests
@@ -31,9 +34,11 @@ type MaybeBuilder() =
 let maybe = MaybeBuilder()
 
 let isDouble s = 
-    maybe { 
-        let b, v = Double.TryParse(s)
-        if b then return v else return! None} 
+    maybe {  let b, v = Double.TryParse(s)
+             if b then return v else return! None} 
+
+let isInt s = 
+    maybe { let b, v = Int32.TryParse(s) in if b then return v else return! None} 
         
 let containsDash (s:string) = maybe {if s.Contains("-") then return s else return! None }
 
@@ -50,10 +55,13 @@ let testDouble s =
                 let! num = isDouble s
                 return num    } 
     
-let (|Double|String|) s = 
+let (|Double|String|Int|) s = 
+   match isInt s with
+    | Some i -> Int i
+    | None ->  
        match testDouble s with
-          | Some v -> Double v
-          | None -> String s
+        | Some f -> Double f
+        | None -> String s 
 
 ////////////////////////////////////////
 
@@ -107,10 +115,6 @@ let mapFilter f cond seqs = seq {for el in seqs do let mapped = f el in if cond 
 
 let inline contains c l = Seq.exists (fun item -> item = c) l 
 
-let containsAll (tests : 'a seq) (items : 'a seq) = (set tests).IsSubsetOf (set items) 
-
-let containsOneOf (tests : 'a seq) (items : 'a seq) = Set.intersect (set tests) (set items) |> Set.count > 1 
-
 let swapArr i j (arr:'a[]) =
     let k = arr.[i]
     arr.[i] <- arr.[j]
@@ -122,19 +126,27 @@ let inline swap (x,y) = (y,x)
 
 let inline fst3 (a,b,c) = a
 
-let fst4 (a,b,c,d) = a
+let inline fst4 (a,b,c,d) = a
 
-let fst5 (a,b,c,d,e) = a
+let inline fst5 (a,b,c,d,e) = a
  
 let inline snd3 (_,b,_) = b
 
 let inline snd4 (a,b,_,_) = b
 
+let inline snd5 (_,b,_,d,_) = b 
+
 let inline third (a,b,c) = c
 
 let inline third4 (_,_,c,_) = c
 
+let inline third5 (_,b,c,d,_) = c
+
 let inline fourth (_,_,_,el) = el
+
+let inline fourth5 (_,_,_,d,_) = d
+
+let inline fifth (_,b,c,d,e) = e
 
 let inline fifth7 (_,_,_,_,el,_,_) =  el
 
@@ -210,6 +222,8 @@ module List =
 type Array with  
   static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x))  
   static member inline subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
+  static member inline lastElement (a:'a []) = a.[a.Length - 1]
+  static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
   static member inline get2 loc (a:'a[]) = a.[loc] 
   static member inline countElements array = array |> Array.fold mapAdd Map.empty 
   static member countElementsMapThenFilter f filter array = 
@@ -241,10 +255,12 @@ module Tuple =
 
 //---------Array 2D----------
 type 'a ``[,]`` with
-    /// the operator --. also gets the rows in parallel, this does not
+    member m.RowCount = m.GetLength(0)
+    member m.ColumnCount = m.GetLength(1)
+    /// the fuction atrow also gets the rows in parallel, this does not
     member m.rows index = 
         Array.init (m.GetLength(1)) (fun i -> m.[index, i]) 
-    ///the operator |. gets the cols in parallel, this does not
+    ///the operator atcol gets the cols in parallel, this does not
     member m.cols index = 
         Array.init (m.GetLength(0)) (fun i -> m.[i, index])
 
@@ -272,9 +288,10 @@ module Array2D =
   
   let fold f seed (m:'a[,]) = m |> foldGen 1 f seed
 
-  let (--.) (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i]) 
-   
-  let (|.) (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
+///isParallel
+let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i]) 
+///isParallel  
+let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
 /////////////////////////////STRINGS////////////////////
 //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
@@ -362,17 +379,20 @@ let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
 ///true when [sub]string is contained in [s]tring
 let inline containedinStr (s:string) (sub:string) = s.Contains(trim sub)
 
+let strContainsAll testStrings str = testStrings |> Array.forall (containedinStr str) 
+
 let (|StrContains|_|) testString (str : string) = 
    if str.Contains(testString) then Some(true) else None  
 
-let (|StrContainsOneOf|_|) (testStrings : string[]) str = 
-     testStrings |> Array.tryFind (containedinStr str)  
-
-let (|StrContainsAll|_|) (testStrings : string[]) str  = 
-   nestif {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
+let (|StrContainsOneOf|_|) (testStrings : string[]) str = testStrings |> Array.tryFind (containedinStr str) 
+      
+let (|StrContainsAll|_|) (testStrings : string[]) str = 
+    nestif {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
 
 let (|StrContainsRemove|_|) t (str : string) = 
    if str.Contains(t) then Some(str.Replace(t,"")) else None 
+
+let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome
 
 module String =
   let seperateStringByCaps (s:string) = 
@@ -382,9 +402,6 @@ module String =
        else outString.Append c
      outString.ToString()  
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
-
-type MutableList<'a> = System.Collections.Generic.List<'a>
-type Hashset<'a> = System.Collections.Generic.HashSet<'a>
 
 type System.Collections.Generic.List<'a> with
    static member Length (glist : Collections.Generic.List<'a>) = glist.Count
@@ -396,12 +413,18 @@ module Seq =
 
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
-  let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))  
+  let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
+  
+  let takeOrMax n seqs =
+    let counter = ref 0
+    seq {for el in seqs do 
+          if !counter <> n then  
+            incr counter; yield el}      
 
 ////////////////////////MISC////////////////////////
 
 ///Similar structure to Unfold but does not generate sequences and meant to be used in place of loops.
-let fold stopcondition func seed =
+let recurse stopcondition func seed =
     let rec inner = function
       | state when stopcondition state -> state 
       | state -> inner (func state)

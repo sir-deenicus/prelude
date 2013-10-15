@@ -9,7 +9,7 @@ open Prelude.Math
 open System
 open Prelude.Common
 open Prelude.Parallel
-
+ 
 /////Map Merging
 
 let m1 = Map.ofList [1,2; 2,3]
@@ -35,6 +35,9 @@ m.fold (fun s k v -> s + k + v) 0 //12
 m.fold (fun s k v -> s + string v) "" <> "311"
 
 m.foldKV (fun s (DictKV(k , v)) -> s + k + v) 0 = 12
+/////////////
+[0..10] |> Seq.takeOrMax 2 |> Seq.length = 2
+[0..10] |> Seq.takeOrMax 200 |> Seq.length = 11
 
 ///////Testing Reducers /////////
 //Example - wordcount
@@ -82,3 +85,13 @@ inf numSeq
 bucketRange 0 5. 2. = 0.
 bucketRange 0 5. 40. = 40.
 bucketRange 1 0.5 1.6 = 1.5
+
+/////contain
+strContainsAll [|"apple"; "bag"; "key"|] "apple bag key" 
+strContainsAll [|"apple"; "bag"; "key"|] "applebagkey" 
+strContainsAll [|"apple"; "bag"; "key"|] "applbagkey"  
+
+strContainsOneOf [|"apple"; "bag"; "key"|] "apple bag key" 
+strContainsOneOf [|"apple"; "bag"; "key"|] "applebagkey" 
+strContainsOneOf [|"apple"; "bag"; "key"|] "applbagkey" 
+strContainsOneOf [|"apple"; "bag"; "key"|] "applbigkay" 

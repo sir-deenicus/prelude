@@ -32,9 +32,9 @@ let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =
 
 let meanDifference (v:float[]) = 
     let n, nl = float v.Length, v.Length 
-    let M = fold (fun (i,j,_) -> j = nl ) 
-                 (fun (i,j, x) -> let i', j' = if i = nl - 1 then 0, j + 1 else i + 1, j
-                                  i', j', x + abs (v.[i] - v.[j])) (0,0,0.) |> third
+    let M = recurse (fun (i,j,_) -> j = nl ) 
+                    (fun (i,j, x) -> let i', j' = if i = nl - 1 then 0, j + 1 else i + 1, j
+                                     i', j', x + abs (v.[i] - v.[j])) (0,0,0.) |> third
     M / (n * (n - 1.))  
 
 let relativeMeanDiff (v:float[]) = let meandiff = meanDifference v in meandiff, meandiff / (v |> Array.average)    
@@ -46,11 +46,11 @@ let online_variance_mean variance mean_n n x =
 let online_mean mean_n n x =
     let mean_n' = mean_n + (x - mean_n) / n
     mean_n', n + 1. 
-
+///variance , mean
 let varianceAndMean = function 
-    | x when x = [||] -> 0.0 , 0.0
-    | l -> let mean = Array.average l 
-           (Array.sumBy (fun x -> (x - mean)**2.) l)/ (float (Seq.length l)) , mean   
+    | x when x = Seq.empty -> 0.0 , 0.0
+    | l -> let mean = Seq.average l 
+           (Seq.sumBy (fun x -> (x - mean)**2.) l)/ (float (Seq.length l)) , mean   
  
 let varianceFromMean mean = function 
     | x when x = Seq.empty  -> 0.0 
@@ -58,20 +58,32 @@ let varianceFromMean mean = function
                
 let stddev data = varianceAndMean data |> snd |> sqrt
 
-/// O(n log n) median
+/// O(n log n) median returns if of even length, returns middle and penmiddelate objects
 let inline medianGen (x: 'a [])= 
     let sorted = (x |> Array.sort)
     let xlen, xlenh = x.Length, x.Length / 2  
     xlen % 2 = 0, sorted.[xlenh],sorted.[xlenh - 1] 
 
 let inline median (x: ^a [])= 
-  if x.Length = 1 then x.[0]
+  if x.Length = 1 then float x.[0]
   else
     let iseven, med, medl = medianGen x
     if iseven then float(med + medl) / 2.
     else float med 
 
 //***************************PERMUTATIONS AND CHANCE******************//
+
+let facI n = [2I..n] |> List.fold (*) 1I
+
+let permsI n k = facI n / facI (n - k)
+
+let fac n = [2.0..n] |> List.fold (*) 1.
+
+///num permutations of length n taken k at a time
+let perms n k = fac n / fac (n - k)
+
+///num permutations of length n taken k at a time where order does not matter
+let combinations n k = fac n / (fac k * fac (n - k))
 
 type System.Random with
     member t.NextDouble(minim, maxim) =  t.NextDouble() * (maxim - minim) + minim 
@@ -144,7 +156,7 @@ let scaleTo rmin rmax rangemin rangemax value =
 //***************************Array Useful Vector Math******************//
 
 type Array with
- static member inline permute2 (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
+ static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
  static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty
  static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
  static member inline magnitude v = Array.dotproduct v v |> sqrt 
