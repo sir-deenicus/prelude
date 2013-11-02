@@ -2,6 +2,7 @@
 #load "pseq.fs"
 #load "Reducers.fs"
 #load "math.fs"
+#load "onlinelearning.fs"
 #time "on"
 #nowarn "1125"
 
@@ -95,3 +96,66 @@ strContainsOneOf [|"apple"; "bag"; "key"|] "apple bag key"
 strContainsOneOf [|"apple"; "bag"; "key"|] "applebagkey" 
 strContainsOneOf [|"apple"; "bag"; "key"|] "applbagkey" 
 strContainsOneOf [|"apple"; "bag"; "key"|] "applbigkay" 
+
+/////////
+// From: http://stackoverflow.com/questions/286427/calculating-permutations-in-f
+let rec internal insertions x = function
+    | []  -> [[x]]
+    | (y :: ys) as l -> (x::l)::(List.map (fun x -> y::x) (insertions x ys))
+
+let genPermutations collection = 
+    let rec permutations  = function
+        | []      -> seq [ [] ]
+        | x :: xs -> Seq.concat (Seq.map (insertions x) (permutations xs)) 
+    collection |> Seq.toList |> permutations 
+
+let dir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+
+let atrain = IO.File.ReadAllLines( dir + @"\arcene_train.data") |> Array.map (fun s -> s.Split([|" " |], StringSplitOptions.RemoveEmptyEntries)|> Array.map (fun f -> float f)) 
+let alabels = IO.File.ReadAllLines( dir + @"\arcene_train.labels") |> Array.map (fun f -> let v = float f in if v = -1. then 0. else v)
+let alabels2 = IO.File.ReadAllLines( dir + "\\arcene_train.labels") |> Array.map float
+
+let atest = IO.File.ReadAllLines(dir + "\\arcene_valid.data") |> Array.map (fun s -> s.Split([|" " |], StringSplitOptions.RemoveEmptyEntries)|> Array.map (fun f -> float f)) 
+let atstlbl = IO.File.ReadAllLines(dir + "\\arcene_valid.labels") |> Array.map (fun f -> let v = float f in if v = -1. then 0. else v)
+let atstlbl2 = IO.File.ReadAllLines(dir + "\\arcene_valid.labels") |> Array.map float
+
+let praw = IO.File.ReadAllLines( dir + @"\pima-indians-diabetes.data") |> Array.map (fun s ->  splitstr [|","|] s |> Array.map (fun f -> float f)) 
+let pdata_, ptest_ = praw |> Array.map (fun d -> d.[..d.Length - 2], d.LastElement) |> Array.shuffle |> Array.splitByPercent 0.75  
+let pdata, plbl = pdata_ |> Array.unzip 
+let ptst, ptlbl = ptest_ |> Array.unzip 
+
+let craw = IO.File.ReadAllLines( dir + @"\concreg.csv") |> Array.map (fun s ->  splitstr [|","|] s |> Array.map (fun f -> float f)) 
+let cdata_, ctest_ = craw |> Array.map (fun d -> d.[..d.Length - 2], d.LastElement) |> Array.shuffle |> Array.splitByPercent 0.75  
+let cdata, clbl = cdata_ |> Array.unzip 
+let ctst, ctlbl = ctest_ |> Array.unzip 
+
+let rootMeanError data lbls vec = 
+    (data, lbls) ||> Array.map2 (fun x y -> (Array.dotproduct vec x - y)**2.0) 
+                 |> Array.average
+                 |> sqrt
+ 
+open Prelude.Onlinelearning 
+
+let classError w cl data lbls = 
+       let wrong = (data,lbls) ||> Array.map2 (fun x y -> if y = (cl x w) then 0. else 1.)  
+                               |> Array.sum
+       wrong, wrong / float lbls.Length, 1. - wrong/float lbls.Length
+
+let w, e  = linearRegressWH 0.000001 cdata clbl None
+rootMeanError ctst ctlbl w
+
+let (c, (w,e)) = iterateLearner 50 (linearRegressWH 0.000001)  cdata clbl 
+rootMeanError ctst ctlbl w
+ 
+let w, e  = logisticRegress 1. atrain alabels None
+classError w (logisticClassify) atest atstlbl
+atest |> Array.map (logisticClassify w)
+//----
+//////////////////////////////////
+
+let w, e  =  logisticRegress 1.4 pdata plbl None
+classError w (logisticClassify) ptst ptlbl 
+let ptbias, ptbiaslbls = ptest_ |> Array.filter (snd >> (=) 1.) |> Array.unzip
+classError w (logisticClassify) ptbias ptbiaslbls 
+
+ptbias |> Array.map (logisticClassify w)

@@ -57,3 +57,56 @@ let distCov (v1:float[]) (v2:float[]) same =
 //         Parallel.ForEach(array, (fun it -> lock grown (fun () -> grown := (func !grown it)))) |> ignore
 //         !grown
        
+
+let lasso h lambda alpha (xs : float [][]) (ys:float[]) ws_ =
+    let ws = defaultArg ws_ (Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001))   
+    let us = Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001)   
+    let vs = Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001)   
+    let rec loop err = function 
+        | n when n >= (ys.Length - 1) -> err
+        | i -> let nw =  ys.[i] - h(Array.dotproduct xs.[i] ws) 
+               for j in 0..(ws.Length - 1) do 
+                    us.[j] <- max 0. (us.[j] - alpha * (lambda - nw * xs.[i].[j]))
+                    vs.[j] <- max 0. (vs.[j] + alpha * (lambda - nw * xs.[i].[j]))
+                    ws.[j] <- us.[j] - vs.[j]
+            
+               loop nw (i + 1)
+    let er = loop Double.MaxValue 0                        
+    ws,er
+    
+let svm alpha l (xs : float [][]) (ys:float[]) ws_ = 
+    let ws = defaultArg ws_ (Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001)) 
+    let rec loop err = function 
+        | n when n >= (ys.Length - 1) -> err
+        | i -> let dtp = ys.[i] * Array.dotproduct xs.[i] ws   
+               for j in 0..(ws.Length - 1) do 
+                    ws.[j] <- ws.[j] - (alpha * (l * ws.[j] - if dtp > 1. then 0. else ys.[i] * xs.[i].[j]))
+            
+               loop dtp (i + 1)
+    let er = loop Double.MaxValue 0                        
+    ws,er  
+
+let svmClassify w x = match sign (Array.dotproduct x w) with -1 -> 0. | x -> float x
+
+//----
+ 
+let w, e  = Onlinelearning.lasso Onlinelearning.logistic 0.01 1. atrain alabels None
+classError w (Onlinelearning.logisticClassify) atest atstlbl
+
+//----
+
+let w, e  = Onlinelearning.svm 0.01 0.1 atrain alabels None
+classError w (Onlinelearning.svmClassify) atest atstlbl2
+
+//----
+
+let (c, (w,e)) = iterateLearner 5 (Onlinelearning.logisticRegress 1.) pdata plbl
+classError w (Onlinelearning.logisticClassify) ptst ptlbl 
+//---------
+
+let w, e  = Onlinelearning.lasso Onlinelearning.logistic 0.1 1. pdata plbl None
+classError w (Onlinelearning.logisticClassify) ptst ptlbl
+ 
+let w, e  = Onlinelearning.svm 0.1 1. pdata plbl None
+classError w (svmClassify) ptst ptlbl
+ptst |> Array.map (svmClassify w)

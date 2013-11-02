@@ -219,6 +219,10 @@ let inline internal cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[
 module List =
   let inline sortByDescending f = List.sortBy (fun x -> -1. * float(f x))
 
+type 'a ``[]`` with
+  member inline self.LastElement = self.[self.Length - 1]
+  member inline self.nthFromLastElement i = self.[self.Length - i - 1]
+
 type Array with  
   static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x))  
   static member inline subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
@@ -240,6 +244,11 @@ type Array with
   static member splitEvenly ways (arr:'a[]) =
                  let steps = max (arr.Length / ways) 1
                  [| for i in 0..steps..arr.Length - steps -> arr.[i..i + steps - 1]|]
+
+  static member splitIntoNPieces n (arr : 'a []) =  
+    let steps = n
+    let len = arr.Length - 1
+    [| for i in 0..steps..arr.Length - 1 -> arr.[i..min (i + steps - 1) len]|]
 
   static member splitByPercent p (array : 'a []) = 
     let take = int(float(array.Length) * p)
@@ -293,9 +302,12 @@ let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[i
 ///isParallel  
 let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
+let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> row|] |> Array.Parallel.map (fun row -> arr.[row].[col])
+
 /////////////////////////////STRINGS////////////////////
 //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
 //not worth it for more general code
+
 let removeExtraSpaces (s:string) = 
       let sb = Text.StringBuilder()
       s |> Seq.fold (fun waslastspace curchar -> 
@@ -337,6 +349,11 @@ let inline joinToStringWith sep (s:'a seq) = String.Join(sep, s)
 let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
 
 let inline joinToString s = joinToStringWith "" s
+
+let capitilizeFirst (str:string) = 
+  str.Split (' ') |> Array.map (fun words -> 
+                                   words |> String.mapi (fun i ch -> if i = 0 then Char.ToUpper ch else ch)) 
+                  |> joinToStringWithSpace
 
 ///= [|'.' ; ' '; ',' ; '\t'; '?'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; Environment.NewLine; '—'; '<'; '>';'[';']';'“'|]
 let splitChars = [|'.' ; ' '; ',' ; '\t'; '?'; '\"'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; '\n'; '—'; '<'; '>';'[';']';'“'|]
@@ -392,7 +409,7 @@ let (|StrContainsAll|_|) (testStrings : string[]) str =
 let (|StrContainsRemove|_|) t (str : string) = 
    if str.Contains(t) then Some(str.Replace(t,"")) else None 
 
-let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome
+let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
 module String =
   let seperateStringByCaps (s:string) = 

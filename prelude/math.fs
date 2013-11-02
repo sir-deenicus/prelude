@@ -85,6 +85,17 @@ let perms n k = fac n / fac (n - k)
 ///num permutations of length n taken k at a time where order does not matter
 let combinations n k = fac n / (fac k * fac (n - k))
 
+// From: http://stackoverflow.com/questions/286427/calculating-permutations-in-f
+let rec internal insertions x = function
+    | []  -> [[x]]
+    | (y :: ys) as l -> (x::l)::(List.map (fun x -> y::x) (insertions x ys))
+
+let genPermutations collection = 
+    let rec permutations  = function
+        | []      -> seq [ [] ]
+        | x :: xs -> Seq.concat (Seq.map (insertions x) (permutations xs)) 
+    collection |> Seq.toList |> permutations 
+
 type System.Random with
     member t.NextDouble(minim, maxim) =  t.NextDouble() * (maxim - minim) + minim 
 
@@ -224,6 +235,4 @@ let distCorrelation v1 v2 =
     let vsig = VXY.[0] * VXY.[1] 
     if vsig = 0. then 0. 
     else sqrt((distCovariance v1 v2 false) / sqrt vsig)    
-
-
  
