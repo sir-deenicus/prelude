@@ -10,7 +10,13 @@ open Prelude.Math
 open System
 open Prelude.Common
 open Prelude.Parallel
- 
+
+//
+
+[1..10] |> Seq.takeOrMax 40 |> Seq.toArray
+
+[1..100] |> filterMapTrunc 3 ((flip (%) 2) >> ((=) 0)) ((*) 2)
+  
 /////Map Merging
 
 let m1 = Map.ofList [1,2; 2,3]
@@ -159,3 +165,9 @@ let ptbias, ptbiaslbls = ptest_ |> Array.filter (snd >> (=) 1.) |> Array.unzip
 classError w (logisticClassify) ptbias ptbiaslbls 
 
 ptbias |> Array.map (logisticClassify w)
+
+////////////////
+
+containsOne (set ["much"; "many"]) (["how"; "many"; "two"])
+containsOne (set ["much"; "many"]) (["how"; "much"; "two"])
+containsOne (set ["much"; "many"]) (["how"; "old"; "two"])

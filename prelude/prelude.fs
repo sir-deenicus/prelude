@@ -96,24 +96,52 @@ let inline keepLeft f (x,y) = x , f y
 
 let inline keepRight f (x,y) = f x , y
 
+let inline lessToLeft (a,b) = if a < b then a,b else b,a 
+  
 //no overhead as far as I can see
 let inline (</) x f = f x
  
-let inline (/>) f y = (fun x -> f x y)
+let inline (/>) f y = (fun x -> f x y) 
 
 /////SEQUENCES///////////////
 
-let filterMapTrunc n cond f seqs =
-    let counter = ref 0
-    seq {for el in seqs do 
-          if !counter <> n then  
-           if cond el then incr counter; yield f el}    
+///Similar structure to Unfold but does not necessarily generate sequences and meant to be used in place of loops.
+let recurse stopcondition func seed =
+    let rec inner = function
+      | state when stopcondition state -> state 
+      | state -> inner (func state)
+    inner seed    
+     
+//    seq {for el in seqs do 
+//          if !counter < n then  
+//           if cond el then incr counter; yield f el}   
+let filterMapTrunc n cond f (seqs: 'a seq) =
+    let counter = ref 0 
+    let en = seqs.GetEnumerator() 
+    recurse (fun _ -> not(!counter < n && en.MoveNext()))
+            (fun curlist ->  
+                 let el = en.Current
+                 if cond el then 
+                   incr counter
+                   f el::curlist else curlist) []  
+                   
+let mapFilterTrunc n f cond (seqs: 'a seq) =
+    let counter = ref 0 
+    let en = seqs.GetEnumerator() 
+    recurse (fun _ -> not(!counter < n && en.MoveNext()))
+            (fun curlist ->  
+                 let el = f en.Current
+                 if cond el then 
+                   incr counter
+                   el::curlist else curlist) []     
 
 let filterMap cond f seqs = seq {for el in seqs do if cond el then yield f el} 
 
 let mapFilter f cond seqs = seq {for el in seqs do let mapped = f el in if cond mapped then yield mapped} 
 
 let inline contains c l = Seq.exists (fun item -> item = c) l 
+
+let inline containsOne (matchtries:'a Set) lelist = Seq.exists (fun item -> matchtries.Contains item) lelist
 
 let swapArr i j (arr:'a[]) =
     let k = arr.[i]
@@ -163,11 +191,23 @@ let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
 type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b>
+ 
+
 //combinators don't make sense for mutable types
-type Dictionary<'a,'b> with
-  static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
-  member this.getOrDef key def = if this.ContainsKey(key) then this.[key] else def 
-  member this.tryFind key = if this.ContainsKey(key) then Some this.[key] else None 
+module Dictionary = 
+  let toDict (d:Collections.Generic.IDictionary<'a,'b>) = Dict d
+
+type Dictionary<'a,'b>  with
+ // static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
+  static member ofSeq values = Dict(values |> dict) 
+  member this.getOrDef key def = 
+     let found,v = this.TryGetValue key
+     if found then v else def 
+
+  member this.tryFind key = 
+    let found,v = this.TryGetValue key
+    if found then Some v else None  
+
  ///Fold over values in dictionary
   member this.foldV f init = this.Values |> Seq.fold f init
   member this.ExpandElseAdd key expand def =
@@ -176,7 +216,9 @@ type Dictionary<'a,'b> with
      else
        this.Add(key,def) 
 
-  member this.GetElseAdd key def = if this.ContainsKey(key) then this.[key] else this.Add(key,def); def 
+  member this.GetElseAdd key def = 
+    let found,v = this.TryGetValue key 
+    if found then v else this.Add(key,def); def 
 
   member this.foldKV f init = this |> Seq.fold f init
 
@@ -267,10 +309,10 @@ type 'a ``[,]`` with
     member m.RowCount = m.GetLength(0)
     member m.ColumnCount = m.GetLength(1)
     /// the fuction atrow also gets the rows in parallel, this does not
-    member m.rows index = 
+    member m.row index = 
         Array.init (m.GetLength(1)) (fun i -> m.[index, i]) 
     ///the operator atcol gets the cols in parallel, this does not
-    member m.cols index = 
+    member m.col index = 
         Array.init (m.GetLength(0)) (fun i -> m.[i, index])
 
 module Array2D =
@@ -279,6 +321,11 @@ module Array2D =
         let narray = Array2D.create r c (mapf array.[0,0])
         Parallel.For( 0, r, fun i -> for j in 0..c-1 do narray.[i, j] <- mapf array.[i, j]) |> ignore   
         narray 
+  let pmapi mapf (array:'a [,]) = 
+        let r , c = array.GetLength(0) , array.GetLength(1) 
+        let narray = Array2D.create r c (mapf 0 0 array.[0,0])
+        Parallel.For( 0, r, fun i -> for j in 0..c-1 do narray.[i, j] <- (mapf i j array.[i, j])) |> ignore   
+        narray
 
   let foldAt dimension rowOrCol f seed (m:'a[,]) = 
         let top = m.GetLength(dimension)
@@ -411,7 +458,14 @@ let (|StrContainsRemove|_|) t (str : string) =
 
 let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
+let splitwSpace = splitstr [|" "|]
+
 module String =
+    let DecodeFromUtf8 (utf8String:string) = 
+        // copy the string as UTF-8 bytes. 
+        let utf8Bytes = [|for c in utf8String -> byte c|]
+        System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
+
   let seperateStringByCaps (s:string) = 
      let outString = Text.StringBuilder()
      for c in s do
@@ -432,21 +486,16 @@ module Seq =
 
   let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
   
-  let takeOrMax n seqs =
+  let takeOrMax n (seqs:'a seq) =
     let counter = ref 0
-    seq {for el in seqs do 
-          if !counter <> n then  
-            incr counter; yield el}      
+    let en = seqs.GetEnumerator()   
+    seq {  
+        while !counter < n && en.MoveNext() do 
+            incr counter
+            yield en.Current }      
 
 ////////////////////////MISC////////////////////////
 
-///Similar structure to Unfold but does not generate sequences and meant to be used in place of loops.
-let recurse stopcondition func seed =
-    let rec inner = function
-      | state when stopcondition state -> state 
-      | state -> inner (func state)
-    inner seed    
-     
 let eightBitsToByte (b:Collections.BitArray) = 
      let a = [|0uy|]
      b.CopyTo(a,0) ; a.[0] 

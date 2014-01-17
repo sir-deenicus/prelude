@@ -110,6 +110,15 @@ let inline splitNatATime hashfunc f op N (data:'a []) =
                 else bset, curCombo </op/> f curbit, i + 1) (Set.empty ,f data.[0], 1)
     |> fst3
 
+///splits like "abcdef" -> "ab" "cd" "ef"
+let inline splitNatATimeStr N (str:string) =   
+  str
+    |> Seq.fold (fun (bset, curCombo, i) curbit ->
+                if i = N then 
+                    bset |> Set.add (jenkinsOAThash curCombo), string curbit, 1
+                else bset, curCombo + string curbit, i + 1) (Set.empty ,string str.[0], 1)
+    |> fst3
+
 let strTominHash splitWith k = ((splitWith (+) k) >> (minhashes 5))
 
 //very fast while fairly accurate way to compare 2 strings
