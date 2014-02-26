@@ -33,9 +33,8 @@ type ConcurrentSetAgent<'T when 'T: equality>() =
   member x.Add (v) = agent.PostAndReply(fun reply -> v, PutCheck reply)
 
 ///a simple concurrent dictionary
-type ConcurrentDictionaryAgent<'K,'V when 'K: equality>() =  
-  let agent = Agent.Start(fun inbox -> async {
-    let dictionary = new System.Collections.Generic.Dictionary<'K,'V>(HashIdentity.Structural)
+type ConcurrentDictionaryAgent<'K,'V when 'K: equality>(dictionary:Dict<'K,'V>) =   
+  let agent = Agent.Start(fun inbox -> async { 
     while true do
       let! (k,v), msg = inbox.Receive() 
       match msg with
@@ -50,7 +49,7 @@ type ConcurrentDictionaryAgent<'K,'V when 'K: equality>() =
           })
            
   let messanger k msg = agent.PostAndAsyncReply(fun reply -> ((k,Unchecked.defaultof<'V>), msg reply))
-
+  new() = ConcurrentDictionaryAgent(Dict(HashIdentity.Structural))
   member x.AsyncContainsKey(k) = agent.PostAndAsyncReply(fun reply -> (k,Unchecked.defaultof<'V>), Check reply)
    ///Prefer the use eof GetOrAdd
   member x.AsyncAdd (k:'K,v:'V) = agent.Post((k,v), Put)
@@ -60,3 +59,4 @@ type ConcurrentDictionaryAgent<'K,'V when 'K: equality>() =
   member x.AsyncTryGet (k:'K) =  messanger k TryGet
   member x.AsyncGetOrAdd (k:'K) def = agent.PostAndAsyncReply(fun reply -> (k,Unchecked.defaultof<'V>), GetOrAdd(def,reply))
   member x.ToRegularDict() = agent.PostAndReply(fun reply -> (Unchecked.defaultof<'K>,Unchecked.defaultof<'V>), GetDict reply)
+   

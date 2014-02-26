@@ -15,6 +15,18 @@ let dict_as_trie words = words |> Array.fold (fun trie w -> add siterm trie (w, 
  
 let trie_contains w trie = mem siterm trie (w, 0)
 
+///returns take or take+1 autocompletes
+let autocomplete take (tri:trie<char,'a>) (fragment:string) =   
+  let rec rundownword taken clist ctri curword = //printfn "is word %s, %d %A" curword taken clist;
+       let nlist,count = if is_terminal ctri then  curword::clist, taken+1 else clist, taken
+       node_map ctri |> Seq.fold (fun (ntaken,curlist) (DictKV(letter,children)) ->
+                  if ntaken < take then 
+                    rundownword (ntaken) curlist children (curword + string letter) 
+                  else 0,curlist) (count,nlist) 
+  
+  let starttri = fragment |> Seq.fold (fun curtrie c -> find_subtrie curtrie c) tri
+  rundownword 0 [] starttri fragment |> snd
+
 //Based on http://stevehanov.ca/blog/index.php?id=114
 let search maxCost take tri word = 
     let results = System.Collections.Generic.List<string * int>()//We could fold but each would generate a list and append is O(n)

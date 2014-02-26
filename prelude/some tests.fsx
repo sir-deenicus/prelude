@@ -3,6 +3,8 @@
 #load "Reducers.fs"
 #load "math.fs"
 #load "onlinelearning.fs"
+#load "Trie.fs"
+#load "TrieStringSearch.fs"
 #time "on"
 #nowarn "1125"
 
@@ -10,6 +12,12 @@ open Prelude.Math
 open System
 open Prelude.Common
 open Prelude.Parallel
+open Prelude.TrieDictionarySearch
+////
+let t = dict_as_trie [|"apple"; "app" ;"art"; "cat"; "card"; "carded"; "cap"|]
+
+autocomplete 2 t "ca"
+autocomplete2 1 t "ca"
 
 //
 

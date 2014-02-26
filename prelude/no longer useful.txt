@@ -56,7 +56,19 @@ let distCov (v1:float[]) (v2:float[]) same =
 //         let grown = ref seed         
 //         Parallel.ForEach(array, (fun it -> lock grown (fun () -> grown := (func !grown it)))) |> ignore
 //         !grown
-       
+    
+	
+let autocomplete take (tri:trie<char,'a>) (fragment:string) =  
+  let res = MutableList<string>()
+  let rec rundownword ctri curword = 
+     if is_terminal ctri then
+        res.Add(curword)  
+     for (DictKV(letter,children)) in node_map ctri do 
+       rundownword children (curword + string letter) 
+
+  let starttri = fragment |> Seq.fold (fun curtrie c -> find_subtrie curtrie c) tri
+  rundownword starttri fragment  
+  res |> Seq.takeOrMax take |> Seq.toArray   
 
 let lasso h lambda alpha (xs : float [][]) (ys:float[]) ws_ =
     let ws = defaultArg ws_ (Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001))   

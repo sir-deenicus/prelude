@@ -18,6 +18,8 @@ let node_value = function
 
 let node_map = function
  | TNode (_, m) -> m 
+
+let tri_unbundle = function | TNode (k, m) -> k, m
  
 let is_terminal n =
  match node_value n with

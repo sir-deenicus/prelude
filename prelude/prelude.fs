@@ -437,6 +437,8 @@ let inline tolower (str:string) = str.ToLower()
 
 let inline toupper (str:string) = str.ToUpper()
 
+let inline replace (oldvalue:string) replacement (str:string) = str.Replace(oldvalue,replacement)
+
 ///true when [sub]string is contained in [s]tring
 let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
 
@@ -458,15 +460,18 @@ let (|StrContainsRemove|_|) t (str : string) =
 
 let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
-let splitwSpace = splitstr [|" "|]
+let splitwSpace = splitstr [|" "|] 
 
 module String =
+    let DecodeFromUtf8Bytes (utf8Bytes:byte []) =  
+        System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
+
     let DecodeFromUtf8 (utf8String:string) = 
         // copy the string as UTF-8 bytes. 
         let utf8Bytes = [|for c in utf8String -> byte c|]
         System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
 
-  let seperateStringByCaps (s:string) = 
+    let seperateStringByCaps (s:string) = 
      let outString = Text.StringBuilder()
      for c in s do
        if Char.IsUpper c then outString.Append(' '); outString.Append(c)

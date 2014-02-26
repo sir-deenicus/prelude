@@ -186,6 +186,14 @@ type Array with
    
  static member inline cosineSimilarity tol v1 v2 =
     Array.dotproduct v1 v2 / ((Array.magnitude v1 * Array.magnitude v2) + tol)
+
+ static member inline rowAverage (rows : 'a[][]) = 
+   let den = float32 rows.Length
+   let outArr = Array.create rows.[0].Length 0.f
+   for i in 0..rows.[0].Length - 1 do
+       for j in 0..int den - 1 do
+         outArr.[i] <- outArr.[i] + float32 rows.[j].[i] / den
+   outArr
  
 type 'a ``[]`` with
  ///O(n) in place
