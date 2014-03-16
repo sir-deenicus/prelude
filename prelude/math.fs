@@ -18,6 +18,21 @@ let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =
 
 //***************************BASIC STATS******************//
 
+let cdf p = p |> Array.fold (fun (total, list) v -> 
+                                let cd = v + total
+                                cd, cd::list ) (0., []) 
+               |> snd 
+               |> Array.ofList 
+
+let getDiscreteSample (pcdf:float[]) = 
+    let k, pcdlen = random.NextDouble() * pcdf.[0], pcdf.Length - 1
+    let rec cummProb idx = if k > pcdf.[idx] then cummProb (idx - 1) else idx
+    
+    abs(cummProb pcdlen - pcdlen) 
+
+let DiscreteSample p = cdf p |> getDiscreteSample 
+
+
 ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
 let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =   
     let vec, vec2 = Array.ofSeq vect1, Array.ofSeq vect2
@@ -166,6 +181,14 @@ let scaleTo rmin rmax rangemin rangemax value =
    
 //***************************Array Useful Vector Math******************//
 
+let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =  
+  let den = numRows 
+  let outArr = Array.create rows.[0].Length (Unchecked.defaultof<'b>)
+  for i in 0..rows.[0].Length - 1 do
+       for j in 0..int den - 1 do
+         outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
+  outArr
+
 type Array with
  static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
  static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty
@@ -184,16 +207,14 @@ type Array with
  static member inline cosineSimilarityMag tol v1 v2 mag1 mag2 =
    Array.dotproduct v1 v2  / ((mag1 * mag2) + tol)
    
+ static member transpose (a : 'a[][]) = 
+     [|for c in 0..a.[0].Length - 1 -> 
+         [|for r in 0..a.Length - 1 -> a.[r].[c]|]|]
+
  static member inline cosineSimilarity tol v1 v2 =
     Array.dotproduct v1 v2 / ((Array.magnitude v1 * Array.magnitude v2) + tol)
 
- static member inline rowAverage (rows : 'a[][]) = 
-   let den = float32 rows.Length
-   let outArr = Array.create rows.[0].Length 0.f
-   for i in 0..rows.[0].Length - 1 do
-       for j in 0..int den - 1 do
-         outArr.[i] <- outArr.[i] + float32 rows.[j].[i] / den
-   outArr
+ static member inline colAverageFloats (rows:'a[][]) = colAverageGen (float rows.Length) float rows
  
 type 'a ``[]`` with
  ///O(n) in place
@@ -243,4 +264,31 @@ let distCorrelation v1 v2 =
     let vsig = VXY.[0] * VXY.[1] 
     if vsig = 0. then 0. 
     else sqrt((distCovariance v1 v2 false) / sqrt vsig)    
+
+////////////////////////////////////////
+
+
+
+let toBase b n =  
+   let logf x = log x / log b 
+   let rec breaknum bs = 
+     function
+      | x when x <= 0. -> bs
+      | x ->
+       let p = x |> logf |> floor 
+       let basen = b ** p
+       let leading_digit = floor(x / basen)
+       let next = x - (leading_digit * basen) 
+       breaknum ((p,leading_digit)::bs) next
+   breaknum [] n |> List.toArray
+
+let readoutNum b = Array.map (fun (p,d) -> d * b ** p) 
  
+let baseNumToString (l:'a[]) lmap =
+    [|for i in 0.0..(fst l.LastElement) do 
+        yield 
+         (match Map.tryFind i lmap with
+          | None -> "0"
+          | Some d when d < 10. -> string d
+          | Some d when d < 36.-> string(char (d+55.))
+          | Some d -> string d + "|" )|] |> Array.rev |> joinToString

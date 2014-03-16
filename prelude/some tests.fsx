@@ -13,11 +13,28 @@ open System
 open Prelude.Common
 open Prelude.Parallel
 open Prelude.TrieDictionarySearch
+
+
+
+/////
+
+let tststr = "This is \"number\" five's test"
+
+tststr.Replace("'", "[apos]").Replace("\"", "[qu]").Replace (newLine, "")
+String.replaceMultiple [|"'", "[apos]"; "\"", "[qu]"; newLine,""|] tststr
+
+String.transformMultiple Text.RegularExpressions.Regex.Escape [|"(cat)"; "dog"|] "The animal (cat) slapped the dog"
+
+/////
+//= [|2; 3; 7|]
+[|[|2; 5; 10|]
+  [|1; 2; 3|]
+  [|3; 2; 8|]|] |> Array.colAverageFloats 
+
 ////
 let t = dict_as_trie [|"apple"; "app" ;"art"; "cat"; "card"; "carded"; "cap"|]
 
-autocomplete 2 t "ca"
-autocomplete2 1 t "ca"
+autocomplete 2 t "ca" 
 
 //
 

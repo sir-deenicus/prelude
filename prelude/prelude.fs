@@ -89,9 +89,7 @@ let inline curryfst f a _ = f a
 let inline currysnd f _ b = f b 
 
 let inline flip f a b = f b a 
-
-let inline flipApply  f1 f2 e = f2 (f1 e) 
-
+ 
 let inline keepLeft f (x,y) = x , f y
 
 let inline keepRight f (x,y) = f x , y
@@ -103,6 +101,11 @@ let inline (</) x f = f x
  
 let inline (/>) f y = (fun x -> f x y) 
 
+let inline konst x _ = x
+
+let inline funcOr f1 f2 a = f1 a || f2 a
+
+let inline funcAnd f1 f2 a = f1 a && f2 a
 /////SEQUENCES///////////////
 
 ///Similar structure to Unfold but does not necessarily generate sequences and meant to be used in place of loops.
@@ -233,16 +236,20 @@ let mapAddGeneric map key f initial =
         Map.add key (f map.[key]) map
      else Map.add key initial map
 
-let inline mapAdd map key = mapAddGeneric map key ((+) 1.) 1.
- 
+let inline mapAddOne map key = mapAddGeneric map key ((+) 1.) 1.
+
 let inline mapGet map key defaultValue = if Map.containsKey key map then map.[key] else defaultValue
+ 
+let mapGetflip themap = flip (mapGet themap)  
 
 let inline mapGetAdd map key defaultValue =  
    if Map.containsKey key map then map.[key], map else defaultValue, map.Add(key, defaultValue)
 
-module Map =
-    let inline sum m = m |> Map.fold (curryfst (+)) 0.  
+let toPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray 
 
+module Map =
+    let inline sum m = m |> Map.fold (curryfst (+)) 0. 
+     
     ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
     ///it is clear that the function will run more efficiently
     let merge combine wrap smallermap biggermap = 
@@ -263,7 +270,7 @@ module List =
 
 type 'a ``[]`` with
   member inline self.LastElement = self.[self.Length - 1]
-  member inline self.nthFromLastElement i = self.[self.Length - i - 1]
+  member inline self.nthFromLast(i) = self.[self.Length - i - 1]
 
 type Array with  
   static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x))  
@@ -271,11 +278,11 @@ type Array with
   static member inline lastElement (a:'a []) = a.[a.Length - 1]
   static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
   static member inline get2 loc (a:'a[]) = a.[loc] 
-  static member inline countElements array = array |> Array.fold mapAdd Map.empty 
+  static member inline countElements array = array |> Array.fold mapAddOne Map.empty 
   static member countElementsMapThenFilter f filter array = 
        array |> Array.fold (fun counts item -> 
                             let item' = f item 
-                            if filter item' then mapAdd counts item' else counts) Map.empty
+                            if filter item' then mapAddOne counts item' else counts) Map.empty
 
   static member countAndMax array =  
      let counts = array |> Array.countElements 
@@ -397,11 +404,6 @@ let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
 
 let inline joinToString s = joinToStringWith "" s
 
-let capitilizeFirst (str:string) = 
-  str.Split (' ') |> Array.map (fun words -> 
-                                   words |> String.mapi (fun i ch -> if i = 0 then Char.ToUpper ch else ch)) 
-                  |> joinToStringWithSpace
-
 ///= [|'.' ; ' '; ',' ; '\t'; '?'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; Environment.NewLine; '—'; '<'; '>';'[';']';'“'|]
 let splitChars = [|'.' ; ' '; ',' ; '\t'; '?'; '\"'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; '\n'; '—'; '<'; '>';'[';']';'“'|]
 
@@ -424,7 +426,7 @@ let inline splitstrWithSpace (str : string) = str.Split([|" "|], StringSplitOpti
 
 let inline splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, @"(?<=(?<![\d.\d])[\n.?!])")
 
-let internal slpitStrs = [|"." ; " "; "," ; "\t"; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "(" ; ")"; "\000"; Environment.NewLine; "—"; "<"; ">";"[";"]";"“"|]
+let slpitStrs = [|"." ; " "; "," ; "\t"; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "(" ; ")"; "\000"; Environment.NewLine; "—"; "<"; ">";"[";"]";"“"|]
  
 ///splits to words using the following characters: \s \t . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
 let splitToWords = splitstr slpitStrs
@@ -461,8 +463,37 @@ let (|StrContainsRemove|_|) t (str : string) =
 let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
 let splitwSpace = splitstr [|" "|] 
+ 
+module String = 
+    let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
+        Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
+ 
+   
+    let replaceTheseGen splitfunc (f:string -> string) (words:Hashset<string>) str = 
+        let spacedstr = str |> splitfunc
+        let sbuilder = Text.StringBuilder()
 
-module String =
+        spacedstr |> Array.iter (fun w -> if words.Contains w then 
+                                               sbuilder.Append (f w)
+                                               sbuilder.Append " "; 
+                                          else sbuilder.Append w
+                                               sbuilder.Append " " 
+                                          ()) 
+        sbuilder.ToString()   
+
+    ///takes a set of words and replaces those words with supplied function
+    let replaceThese f = replaceTheseGen splitstrWithSpace f
+
+    ///convenience function to multiply replace within a string. Uses string.replace
+    let replaceMultiple words str = words |> Array.fold (fun nstr (w,repw) -> nstr |> replace w repw) str
+    
+    ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
+    let transformMultiple f words str = words |> Array.fold (fun nstr w -> nstr |> replace w (f w)) str
+     
+    let uncapitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToLower c else c)
+  
+    let capitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
+
     let DecodeFromUtf8Bytes (utf8Bytes:byte []) =  
         System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
 
@@ -485,7 +516,7 @@ type System.Collections.Generic.List<'a> with
 module Seq =
   let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float(f x))
  
-  let inline counts (v:seq<'a>) =  v |> Seq.fold mapAdd Map.empty
+  let inline counts (v:seq<'a>) =  v |> Seq.fold mapAddOne Map.empty
 
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
