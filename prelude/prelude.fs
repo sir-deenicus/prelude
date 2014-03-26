@@ -469,11 +469,11 @@ module String =
         Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
  
    
-    let replaceTheseGen splitfunc (f:string -> string) (words:Hashset<string>) str = 
+    let replaceTheseGen splitfunc (f:string -> string) (items:Hashset<string>) str = 
         let spacedstr = str |> splitfunc
         let sbuilder = Text.StringBuilder()
 
-        spacedstr |> Array.iter (fun w -> if words.Contains w then 
+        spacedstr |> Array.iter (fun w -> if items.Contains w then 
                                                sbuilder.Append (f w)
                                                sbuilder.Append " "; 
                                           else sbuilder.Append w
