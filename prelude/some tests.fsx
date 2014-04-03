@@ -12,9 +12,9 @@ open Prelude.Math
 open System
 open Prelude.Common
 open Prelude.Parallel
-open Prelude.TrieDictionarySearch
-
-
+open Prelude.TrieDictionarySearch 
+  
+"A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> tolower |> String.capitilizebySpace 2
 
 /////
 

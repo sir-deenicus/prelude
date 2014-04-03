@@ -5,6 +5,7 @@ module Prelude.Common
 open System 
 open System.Collections.Generic  
 open System.Threading.Tasks
+open System.Net
 
 type MutableList<'a> = System.Collections.Generic.List<'a>
 type Hashset<'a> = System.Collections.Generic.HashSet<'a>
@@ -62,18 +63,7 @@ let (|Double|String|Int|) s =
        match testDouble s with
         | Some f -> Double f
         | None -> String s 
-
-////////////////////////////////////////
-
-let timeThis iters f = 
-   let st = Diagnostics.Stopwatch()
-   let x, times = f(), Collections.Generic.List()
-   st.Start()
-   for i in 0..iters - 1 do
-     f() |> ignore
-   st.Stop()
-   x, st.Elapsed
-
+         
 //////////////////FUNCTIONS//////////
 
 let inline curry2 f a b = f(a,b)
@@ -439,6 +429,10 @@ let inline tolower (str:string) = str.ToLower()
 
 let inline toupper (str:string) = str.ToUpper()
 
+let (|LowerCase|) s = tolower s
+
+let (|UpperCase|) s = toupper s
+
 let inline replace (oldvalue:string) replacement (str:string) = str.Replace(oldvalue,replacement)
 
 ///true when [sub]string is contained in [s]tring
@@ -463,12 +457,11 @@ let (|StrContainsRemove|_|) t (str : string) =
 let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
 let splitwSpace = splitstr [|" "|] 
- 
+
 module String = 
     let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
         Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
  
-   
     let replaceTheseGen splitfunc (f:string -> string) (items:Hashset<string>) str = 
         let spacedstr = str |> splitfunc
         let sbuilder = Text.StringBuilder()
@@ -494,6 +487,8 @@ module String =
   
     let capitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
 
+    let capitilizebySpace minlen s = s |> splitwSpace |> Array.mapi (fun i s -> if i = 0 || s.Length > minlen then s |> capitalizeFirstWord else s) |> joinToStringWithSpace
+ 
     let DecodeFromUtf8Bytes (utf8Bytes:byte []) =  
         System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
 
@@ -549,6 +544,8 @@ let generateId () =
    let n = Guid.NewGuid().ToByteArray() |> Array.fold (fun i b -> int64 ((int b) + 1) * i) 1L 
    String.Format("{0:x}", n - DateTime.Now.Ticks) 
 
+let guidString () = Guid.NewGuid().ToString() 
+ 
 ///only slightly slower and much better properties than regular hash
 let jenkinsOAThash (key: string) =  
     let mutable currenthash = 0u
@@ -600,5 +597,24 @@ type IO.File with
      else
       IO.File.WriteAllText(fname, "") |> ignore
       ""
+
+////////
+
+let getLocalIPs() =  
+   Dns.GetHostEntry(Dns.GetHostName()).AddressList  
+      |> Array.filter  (fun ip ->  ip.AddressFamily = Sockets.AddressFamily.InterNetwork) 
+
+let getActiveIPsWithNames() =
+    let netface = NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()  
+    netface 
+        |> Array.collect (fun n -> 
+                n.GetIPProperties()
+                 .UnicastAddresses
+                    |> filterMap 
+                            (fun ip -> 
+                                n.OperationalStatus = NetworkInformation.OperationalStatus.Up &&
+                                ip.Address.AddressFamily = Sockets.AddressFamily.InterNetwork)
+                            (fun ip -> ip.Address , n.Name, n.Description)
+                    |> Seq.toArray) 
 
 ////////
