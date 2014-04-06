@@ -263,6 +263,7 @@ type 'a ``[]`` with
   member inline self.nthFromLast(i) = self.[self.Length - i - 1]
 
 type Array with  
+  static member inline lift x = [|x|]
   static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x))  
   static member inline subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
   static member inline lastElement (a:'a []) = a.[a.Length - 1]

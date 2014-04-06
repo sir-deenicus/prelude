@@ -122,3 +122,17 @@ classError w (Onlinelearning.logisticClassify) ptst ptlbl
 let w, e  = Onlinelearning.svm 0.1 1. pdata plbl None
 classError w (svmClassify) ptst ptlbl
 ptst |> Array.map (svmClassify w)
+
+let kmeans k distfunc (xs : float [][]) ws_ = 
+    let ws = defaultArg ws_ ([|for i in 1..k -> i-1, 0., Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001)|])
+  
+    let rec loop = function 
+        | n when n >= (xs.Length - 1) -> ()
+        | i ->  let j, nk,bestk = ws |> Array.minBy (third >> distfunc)
+                (xs.[i], bestk) ||> Array.iteri2 (fun j x w -> bestk.[j] <- w + 1./(nk + 1.) * (x - w))
+                ws.[j] <- (j, nk + 1., bestk)    
+              
+                loop (i + 1)
+    loop 0                        
+    ws 
+  
