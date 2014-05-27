@@ -13,10 +13,20 @@ open System
 open Prelude.Common
 open Prelude.Parallel
 open Prelude.TrieDictionarySearch 
+open System.Net
+ 
+///////////
   
 "A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> tolower |> String.capitilizebySpace 2
 
 /////
+let teststr0 = "ab"
+let teststr1 = "abcdef"
+
+let padtst n f s1 s2 = "\n" + (f n s1) + " efd" + "\n" + (f n s2) + " efd"
+
+padtst 2 String.padcut teststr0 teststr1
+teststr1.Length 
 
 let tststr = "This is \"number\" five's test"
 

@@ -6,6 +6,7 @@ open System
 open System.Collections.Generic  
 open System.Threading.Tasks
 open System.Net
+open System.Linq
 
 type MutableList<'a> = System.Collections.Generic.List<'a>
 type Hashset<'a> = System.Collections.Generic.HashSet<'a>
@@ -83,6 +84,8 @@ let inline flip f a b = f b a
 let inline keepLeft f (x,y) = x , f y
 
 let inline keepRight f (x,y) = f x , y
+
+let pairapply f (x,y) = (f x, f y)
 
 let inline lessToLeft (a,b) = if a < b then a,b else b,a 
   
@@ -183,16 +186,16 @@ let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value
 
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
-type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b>
- 
+type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b> 
 
 //combinators don't make sense for mutable types
-module Dictionary = 
-  let toDict (d:Collections.Generic.IDictionary<'a,'b>) = Dict d
+module Dict = 
+  let ofIDict (d:Collections.Generic.IDictionary<'a,'b>) = Dict d
 
 type Dictionary<'a,'b>  with
  // static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
   static member ofSeq values = Dict(values |> dict) 
+
   member this.getOrDef key def = 
      let found,v = this.TryGetValue key
      if found then v else def 
@@ -203,8 +206,10 @@ type Dictionary<'a,'b>  with
 
  ///Fold over values in dictionary
   member this.foldV f init = this.Values |> Seq.fold f init
+
   member this.ExpandElseAdd key expand def =
-     if this.ContainsKey(key) then
+     let found , v = this.TryGetValue key
+     if found then
         this.[key] <- expand (this.[key])
      else
        this.Add(key,def) 
@@ -222,20 +227,22 @@ type Dictionary<'a,'b>  with
      x
         
 let mapAddGeneric map key f initial = 
-    if map |> Map.containsKey key then
-        Map.add key (f map.[key]) map
-     else Map.add key initial map
+   match Map.tryFind key map with 
+    | Some item -> Map.add key (f item) map
+    | None -> Map.add key initial map
 
 let inline mapAddOne map key = mapAddGeneric map key ((+) 1.) 1.
 
-let inline mapGet map key defaultValue = if Map.containsKey key map then map.[key] else defaultValue
+let inline mapGet map key defaultValue = match Map.tryFind key map with Some item -> item | None -> defaultValue
  
 let mapGetflip themap = flip (mapGet themap)  
 
 let inline mapGetAdd map key defaultValue =  
-   if Map.containsKey key map then map.[key], map else defaultValue, map.Add(key, defaultValue)
+   match Map.tryFind key map with
+     | Some item -> item, map 
+     | None -> defaultValue, map.Add(key, defaultValue) 
 
-let toPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray 
+let keyValueSeqtoPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray 
 
 module Map =
     let inline sum m = m |> Map.fold (curryfst (+)) 0. 
@@ -264,7 +271,10 @@ type 'a ``[]`` with
 
 type Array with  
   static member inline lift x = [|x|]
-  static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x))  
+  static member biPairs (a : 'a []) = [|for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1]|]
+
+  static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x)) 
+  static member inline sortByDescendingLinq f (a:'a []) = a.OrderByDescending (System.Func<_,_> f) |> Array.ofSeq   
   static member inline subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
   static member inline lastElement (a:'a []) = a.[a.Length - 1]
   static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
@@ -294,11 +304,6 @@ type Array with
     let take = int(float(array.Length) * p)
     array.[0..take], array.[take+1..array.Length-1] 
 
-  static member inline unzip5toList (arr : ('a * 'b * 'c * 'd * 'e )  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5) (d1,d2,d3,d4,d5) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 ) ([],[],[],[],[])
-  static member inline unzip7toList (arr : ('a * 'b * 'c * 'd * 'e * 'f * 'g)  []) = arr |> Array.fold (fun (l1,l2,l3,l4,l5,l6,l7) (d1,d2,d3,d4,d5,d6,d7) -> d1 :: l1, d2 :: l2 , d3::l3, d4 :: l4, d5 :: l5 , d6::l6, d7::l7) ([],[],[],[],[],[],[])
-  static member inline collapse7 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5,d6,d7) -> [|d1;d2;d3;d4;d5;d6;d7|]) 
-  static member inline collapse5 arr = arr |> Array.Parallel.collect (fun  (d1,d2,d3,d4,d5) -> [|d1;d2;d3;d4;d5|]) 
- 
 module Tuple =
   let toArray5 (a,b,c,d,e) = [|a;b;c;d;e|]
 
@@ -398,7 +403,7 @@ let inline joinToString s = joinToStringWith "" s
 ///= [|'.' ; ' '; ',' ; '\t'; '?'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; Environment.NewLine; '—'; '<'; '>';'[';']';'“'|]
 let splitChars = [|'.' ; ' '; ',' ; '\t'; '?'; '\"'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; '\n'; '—'; '<'; '>';'[';']';'“'|]
 
-let superflouschars = [|' '; ','; '.'; '\"' ; '?';'!'; ';'; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'; '\010' ; '\000'|]
+let superflouschars = [|' '; ','; '.'; '\"' ; '?';'!'; ';'; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”';'\013'; '{';'}'; '['; ']'; '\010' ; '\000'|]
 
 let inline trim (str: string) = str.Trim()
 
@@ -459,10 +464,17 @@ let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings
 
 let splitwSpace = splitstr [|" "|] 
 
-module String = 
+module String =   
+    let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
+    
+    let padcut padlen (s:string) = 
+       let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s
+       usestr |> pad padlen
+
+    let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
     let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
         Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
- 
+
     let replaceTheseGen splitfunc (f:string -> string) (items:Hashset<string>) str = 
         let spacedstr = str |> splitfunc
         let sbuilder = Text.StringBuilder()
@@ -511,6 +523,8 @@ type System.Collections.Generic.List<'a> with
 
 module Seq =
   let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float(f x))
+
+  let inline sortByDescendingLinq f (sequence : 'a seq) = sequence.OrderByDescending (System.Func<_,_> f)
  
   let inline counts (v:seq<'a>) =  v |> Seq.fold mapAddOne Map.empty
 
@@ -616,6 +630,11 @@ let getActiveIPsWithNames() =
                                 n.OperationalStatus = NetworkInformation.OperationalStatus.Up &&
                                 ip.Address.AddressFamily = Sockets.AddressFamily.InterNetwork)
                             (fun ip -> ip.Address , n.Name, n.Description)
-                    |> Seq.toArray) 
-
-////////
+                    |> Seq.toArray)
+                    
+//http://stackoverflow.com/questions/9760468/unshortening-urls
+let unshorten (shorturl:string) =
+    let req = WebRequest.Create(shorturl) :?> HttpWebRequest
+    req.AllowAutoRedirect <- false
+    req.GetResponse().Headers.["Location"]
+ 

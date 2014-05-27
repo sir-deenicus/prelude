@@ -30,8 +30,7 @@ let getDiscreteSample (pcdf:float[]) =
     
     abs(cummProb pcdlen - pcdlen) 
 
-let DiscreteSample p = cdf p |> getDiscreteSample 
-
+let DiscreteSample p = cdf p |> getDiscreteSample  
 
 ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
 let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =   
@@ -265,10 +264,7 @@ let distCorrelation v1 v2 =
     if vsig = 0. then 0. 
     else sqrt((distCovariance v1 v2 false) / sqrt vsig)    
 
-////////////////////////////////////////
-
-
-
+//////////////////////////////////////// 
 let toBase b n =  
    let logf x = log x / log b 
    let rec breaknum bs = 
@@ -292,3 +288,30 @@ let baseNumToString (l:'a[]) lmap =
           | Some d when d < 10. -> string d
           | Some d when d < 36.-> string(char (d+55.))
           | Some d -> string d + "|" )|] |> Array.rev |> joinToString
+
+////////
+
+let secondsToStrings = function 
+    | 0. -> "Now"
+    | x when x > 60. && x < 3600. -> let m = (x / 60.) |> round 2 in string m + " minutes"
+    | x when x > 3600. && x <= 3600. * 24. -> ((x / 3600.) |> round 1 |> string) + " hours"
+    | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
+    | x -> (x |> round 2 |> string) + " seconds"
+
+let hoursToText = function
+   | h when (h * 60.) < 1. -> "seconds", h / 3600. |> round 1
+   | h when h < 1. -> "minutes", h * 60. |> round 1
+   | h when h < 24. -> "hours", h |> round 1
+   | h when h > 24. * 7. * 4. -> "months", round 2 (h/(24. * 7. * 4.))
+   | h when h > 24. * 7. -> "weeks", round 2 (h/(24. * 7.))
+   | h  -> "days", round 2 (h/24.)  
+
+type DateTime with 
+  member d.ToRoughDateString () = 
+   let today = DateTime.Now.Date
+   let span = (d.Date - today).TotalDays 
+   if DateTime.Now >= d then "now"
+   elif d.Date = today then d.ToShortTimeString()
+   elif span = 1. then d.ToShortTimeString() + ", tomorrow"
+   elif span > 1. && d.Day <= 28 then sprintf "the %dth, in %d days" d.Day (round 0 span |> int)
+   else d.ToShortTimeString() + ", " + d.ToLongDateString()
