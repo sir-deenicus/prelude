@@ -6,6 +6,7 @@
 #load "Trie.fs"
 #load "TrieStringSearch.fs"
 #load "simplegraph.fs"
+#load "stringmetrics.fs"
 #time "on"
 #nowarn "1125"
 
@@ -16,7 +17,29 @@ open Prelude.Parallel
 open Prelude.TrieDictionarySearch 
 open System.Net
 open Prelude.SimpleGraphs
+open Prelude.StringMetrics
+////////////
 
+longestCommonSubstring "apple" "appetitie"
+longestCommonSubvec [|1;2;3;2;3|] [|4;2;3;|]   
+longestCommonSubstring "airtight" "foghorn" 
+longestCommonSubstring "airtight" "failure" 
+let lcs, t = longestCommonSubSeqStr "airtight" "foghorn"
+backtrackLCStr t  
+
+longestCommonSubSeqStr "airtight" "failure" |> snd |> backtrackLCStr  
+      
+longestCommonSubSeq [1..9] [2..2..20] |> snd |> backtrackLCS Array.empty id Array.lift Array.append
+longestCommonSubSeq "airtight" "failure" |> snd |> backtrackLCS_str
+
+minHashStrDist 2 "kangaroo" "[angaroo" 
+
+let cstr = splitNatATime id string (+) 2 (charArr "cattarang")
+cstr |> Set.map jenkinsOAThash = splitNatATimeStr 2 "cattarang"
+
+strTominHash (splitNatATimeStr 2) "fold"
+
+minHashStrDist 2 "bold" "oldesky"
 ////
 let fg = FastStringGraph()
  

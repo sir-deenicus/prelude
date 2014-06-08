@@ -589,7 +589,7 @@ let int32ToBoolArray (i:int) =
    
 let boolArrayToInt32 (b:bool[]) = 
     let ints = Array.create 1 0
-    b.CopyTo(ints, 0)
+    Collections.BitArray(b).CopyTo(ints, 0)
     ints.[0]
 
 module DateTime = 
@@ -650,7 +650,7 @@ let minhash hset = hset |> Set.minElement
 let minhashes maxiter fset = 
  let rec gethashes count minset fullset = 
   match count with
-   | i when i >= maxiter  || Set.count fullset = 0 -> minset
+   | i when i >= maxiter || Set.count fullset = 0 -> minset
    | i -> let minim = minhash fullset
           gethashes (i + 1) (Set.add minim minset) (Set.remove minim fullset) 
  gethashes 0 Set.empty fset
