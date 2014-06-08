@@ -5,6 +5,7 @@
 #load "onlinelearning.fs"
 #load "Trie.fs"
 #load "TrieStringSearch.fs"
+#load "simplegraph.fs"
 #time "on"
 #nowarn "1125"
 
@@ -14,7 +15,34 @@ open Prelude.Common
 open Prelude.Parallel
 open Prelude.TrieDictionarySearch 
 open System.Net
+open Prelude.SimpleGraphs
+
+////
+let fg = FastStringGraph()
  
+fg.InsertVertex "a"
+fg.ContainsVertex "b"
+fg.InsertVertex "b"
+fg.ContainsVertex "b"
+fg.ContainsEdge "a" "b"
+fg.InsertEdge ("a", "b")
+fg.ContainsEdge "b" "a"
+fg.InsertEdge ("a", "c")
+fg.InsertVertex "c"
+fg.GetEdges "a"
+fg.GetEdges "b"
+fg.GetEdges "c"
+fg.GetEdges "d"
+ 
+ ///////////
+
+Array.filteriMap (fun i x -> i + 3 < x && x % 2 = 0) squared [|0..2..9|]
+[|0..2..9|] |> Array.mapi pair |> Array.filter (fun (i,x) -> i + 3 < x && x % 2 = 0) |> Array.map (snd >> squared)
+
+//Array.mapFilteri squared (fun i x -> i + 3 < x  && x % 2 = 0)  [|0..2..9|]
+
+
+let z = Array.mapi pair   [|0..2..9|]
 ///////////
   
 "A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> tolower |> String.capitilizebySpace 2

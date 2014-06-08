@@ -1,5 +1,8 @@
 ﻿//////////////////////////////////////////2D ARRAYS/////////
 
+module Tuple =
+  let toArray5 (a,b,c,d,e) = [|a;b;c;d;e|]
+
 let foldRow2D, foldCol2D = 1, 0                     
 
 

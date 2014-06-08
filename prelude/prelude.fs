@@ -35,6 +35,12 @@ type MaybeBuilder() =
 
 let maybe = MaybeBuilder()
 
+let inline (|ToFloat|) x = float x 
+
+let inline (|ToInt|) x = int x 
+
+let inline (|ToString|) x = string x  
+
 let isDouble s = 
     maybe {  let b, v = Double.TryParse(s)
              if b then return v else return! None} 
@@ -86,6 +92,8 @@ let inline keepLeft f (x,y) = x , f y
 let inline keepRight f (x,y) = f x , y
 
 let pairapply f (x,y) = (f x, f y)
+
+let pair a b = a,b 
 
 let inline lessToLeft (a,b) = if a < b then a,b else b,a 
   
@@ -288,6 +296,7 @@ type Array with
   static member countAndMax array =  
      let counts = array |> Array.countElements 
      counts, counts |> (Seq.maxBy keyValueToValue) |> keyValueToPair
+  static member takeAtPercent p (a: 'a []) = let len = float a.Length in a.[..max 0 (int(round(p * len)) - 1)]
   static member  mapFilter f cond (seqs:'a[]) = [|for el in seqs do let mapped = f el in if cond mapped then yield mapped|] 
   static member sub2 start ends (arr:'a []) = arr.[start..ends]
   static member filterMap cond f seqs = [|for el in seqs do if cond el then yield f el|]
@@ -304,9 +313,29 @@ type Array with
     let take = int(float(array.Length) * p)
     array.[0..take], array.[take+1..array.Length-1] 
 
-module Tuple =
-  let toArray5 (a,b,c,d,e) = [|a;b;c;d;e|]
+module Array =
+ let mapiFilter mapf filter (vec:'a []) = 
+     let c = ref 0
+     [|for a in vec do 
+             let i = !c 
+             incr c
+             let b = mapf i a
+             if filter b then yield b|]
 
+ let filteriMap filter mapf (vec:'a []) = 
+     let c = ref 0
+     [|for a in vec do 
+             let i = !c
+             incr c
+             if filter i a then yield mapf a|]
+
+ let filteri filter (vec:'a []) = 
+     let c = ref 0
+     [|for a in vec do 
+             let i = !c
+             incr c
+             if filter i a then yield a|]
+             
 //---------Array 2D----------
 type 'a ``[,]`` with
     member m.RowCount = m.GetLength(0)
@@ -472,6 +501,7 @@ module String =
        usestr |> pad padlen
 
     let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
+  
     let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
         Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
 
@@ -495,6 +525,9 @@ module String =
     
     ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
     let transformMultiple f words str = words |> Array.fold (fun nstr w -> nstr |> replace w (f w)) str
+    
+    ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
+    let transformMultipleNoCase f words str = words |> Array.fold (fun nstr w -> nstr |> replaceRegExIngoresCase w (f w)) str
      
     let uncapitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToLower c else c)
   
@@ -548,6 +581,24 @@ let eightBitsToByte (b:Collections.BitArray) =
 
 let toBool = (string >> (<>) "0")
 
+let int32ToBoolArray (i:int) = 
+    let b = Collections.BitArray([|i|])
+    let bits = Array.create b.Count false
+    b.CopyTo(bits, 0)
+    bits  
+   
+let boolArrayToInt32 (b:bool[]) = 
+    let ints = Array.create 1 0
+    b.CopyTo(ints, 0)
+    ints.[0]
+
+module DateTime = 
+  let StartOfWeek (startOfWeek:DayOfWeek) (dt:DateTime) =
+    let diff = int(dt.DayOfWeek - startOfWeek)
+    let wrap = if diff < 0 then 7 else 0
+
+    dt.AddDays(-1 * (diff + wrap) |> float).Date
+    
 let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1).ToUniversalTime()).TotalSeconds 
 
 let fromUnixTime timestamp =   DateTime(1970,1,1,0,0,0,0).AddSeconds(timestamp)
@@ -560,7 +611,8 @@ let generateId () =
    String.Format("{0:x}", n - DateTime.Now.Ticks) 
 
 let guidString () = Guid.NewGuid().ToString() 
- 
+
+let generateStrictId() = sprintf "%s|%A|%A|%A" (generateId()) DateTime.Now.TimeOfDay.TotalSeconds DateTime.Now.DayOfYear DateTime.Now.Year 
 ///only slightly slower and much better properties than regular hash
 let jenkinsOAThash (key: string) =  
     let mutable currenthash = 0u
@@ -612,6 +664,13 @@ type IO.File with
      else
       IO.File.WriteAllText(fname, "") |> ignore
       ""
+  static member ReadAllLinesOrCreate(fname:string) =
+     if IO.File.Exists(fname) then
+      IO.File.ReadAllLines(fname)
+     else
+      IO.File.WriteAllLines(fname, [|""|]) |> ignore
+      [||]
+
 
 ////////
 

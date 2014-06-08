@@ -6,11 +6,15 @@ open System
 
 let random = new Random()  
 
-let pi = Math.PI 
+let pi = Math.PI  
+
+let inline pow x y = Math.Pow(float x,float y)
 
 let inline squared (x: ^a) = x * x  
 
-let log2 = log >> (flip (/) (log 2.)) 
+let log2 = log >> (flip (/) (log 2.))
+
+let inline isPowerOf2 (ToFloat x) = let y = log2 x in y - floor y = 0. 
 
 let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =
     for i in 0..a1.Length - 1 do 
