@@ -39,13 +39,17 @@ let inline (|ToFloat|) x = float x
 
 let inline (|ToInt|) x = int x 
 
-let inline (|ToString|) x = string x  
+let inline (|ToString|) x = string x 
 
-let isDouble s = 
+let inline (|ToStringArray|) d = d |> Array.map string
+
+let inline isNumber n = Double.TryParse n |> fst 
+
+let toDouble s = 
     maybe {  let b, v = Double.TryParse(s)
              if b then return v else return! None} 
 
-let isInt s = 
+let toInt s = 
     maybe { let b, v = Int32.TryParse(s) in if b then return v else return! None} 
         
 let containsDash (s:string) = maybe {if s.Contains("-") then return s else return! None }
@@ -56,15 +60,15 @@ let testDouble s =
              | Some(s) ->
                let range = s.Split('-')
                let numStr, numStr2 = range.[0], range.[1]
-               let! num1 = isDouble numStr
-               let! num2 = isDouble numStr2     
+               let! num1 = toDouble numStr
+               let! num2 = toDouble numStr2     
                return (num1 + num2)/2.
              | _ -> 
-                let! num = isDouble s
+                let! num = toDouble s
                 return num    } 
     
 let (|Double|String|Int|) s = 
-   match isInt s with
+   match toInt s with
     | Some i -> Int i
     | None ->  
        match testDouble s with
@@ -95,6 +99,12 @@ let pairapply f (x,y) = (f x, f y)
 
 let pair a b = a,b 
 
+let inline pairop op (x,y) (u,v) = (op x u, op y v)
+
+let inline addPairs x y = pairop (+) x y
+
+let inline joinpair op (x,y) = op x y
+   
 let inline lessToLeft (a,b) = if a < b then a,b else b,a 
   
 //no overhead as far as I can see
@@ -103,6 +113,8 @@ let inline (</) x f = f x
 let inline (/>) f y = (fun x -> f x y) 
 
 let inline konst x _ = x
+
+let inline konst2 _ y = y
 
 let inline funcOr f1 f2 a = f1 a || f2 a
 
@@ -243,7 +255,6 @@ let inline mapAddOne map key = mapAddGeneric map key ((+) 1.) 1.
 
 let inline mapGet map key defaultValue = match Map.tryFind key map with Some item -> item | None -> defaultValue
  
-let mapGetflip themap = flip (mapGet themap)  
 
 let inline mapGetAdd map key defaultValue =  
    match Map.tryFind key map with
@@ -252,9 +263,23 @@ let inline mapGetAdd map key defaultValue =
 
 let keyValueSeqtoPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray 
 
+type IDictionary<'k,'v> with
+   ///in combine, the first element is the source dictionary's and the other is the other's
+   member t.MergeWith combine otherDict = 
+     for (DictKV(key, item)) in otherDict do
+        let isin, thisItem = t.TryGetValue key
+        if isin then t.[key] <- combine thisItem item
+        else t.Add(key,item)  
+
+   member t.MergeNoOverwrites otherDict = 
+     for (DictKV(key, item)) in otherDict do
+        let isin, thisItem = t.TryGetValue key
+        if not isin then t.Add(key,item)  
+
 module Map =
     let inline sum m = m |> Map.fold (curryfst (+)) 0. 
-     
+    let mapGetflip themap = flip (mapGet themap)  
+
     ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
     ///it is clear that the function will run more efficiently
     let merge combine wrap smallermap biggermap = 
@@ -314,27 +339,39 @@ type Array with
     array.[0..take], array.[take+1..array.Length-1] 
 
 module Array =
- let mapiFilter mapf filter (vec:'a []) = 
-     let c = ref 0
-     [|for a in vec do 
-             let i = !c 
-             incr c
-             let b = mapf i a
-             if filter b then yield b|]
+    let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
+    let mapiFilter mapf filter (vec:'a []) = 
+        let c = ref 0
+        [|for a in vec do 
+                let i = !c 
+                incr c
+                let b = mapf i a
+                if filter b then yield b|]
 
- let filteriMap filter mapf (vec:'a []) = 
-     let c = ref 0
-     [|for a in vec do 
-             let i = !c
-             incr c
-             if filter i a then yield mapf a|]
+    let filteriMap filter mapf (vec:'a []) = 
+        let c = ref 0
+        [|for a in vec do 
+                let i = !c
+                incr c
+                if filter i a then yield mapf a|]
 
- let filteri filter (vec:'a []) = 
-     let c = ref 0
-     [|for a in vec do 
-             let i = !c
-             incr c
-             if filter i a then yield a|]
+    let filteri filter (vec:'a []) = 
+        let c = ref 0
+        [|for a in vec do 
+                let i = !c
+                incr c
+                if filter i a then yield a|]
+   
+    let applyToColumn op c (d:'a[][]) = d |> Array.map (filteri (curryfst (op c)))
+
+    let applyToColumnSingle op c (d:'a[]) = d |> filteri (curryfst (op c))
+    let deleteCol c = applyToColumnSingle (<>) c
+    let deleteColumn c = applyToColumn (<>) c
+
+    let selectColumn c = applyToColumn (=) c
+
+    let selectColumns cs = applyToColumn (flip Set.contains) cs
+    let deleteColumns cs = applyToColumn (fun cols c -> Set.contains c cols |> not) cs
              
 //---------Array 2D----------
 type 'a ``[,]`` with
@@ -386,7 +423,6 @@ let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> row|] |> 
 /////////////////////////////STRINGS////////////////////
 //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
 //not worth it for more general code
-
 let removeExtraSpaces (s:string) = 
       let sb = Text.StringBuilder()
       s |> Seq.fold (fun waslastspace curchar -> 
@@ -493,6 +529,14 @@ let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings
 
 let splitwSpace = splitstr [|" "|] 
 
+let splitstrWith s = splitstr [| s |]
+
+let splitstrKeepEmptyWith (splitters:string) (s:string) = s.Split([| splitters |], StringSplitOptions.None)
+
+type String with
+   member t.splitbystr ([<ParamArray>] splitbys : string[]) = splitstr splitbys t
+   member thisStr.splitbystrKeepEmpty ([<ParamArray>] splitbys : string[]) = thisStr.Split(splitbys, StringSplitOptions.None)
+
 module String =   
     let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
     
@@ -551,6 +595,9 @@ module String =
      outString.ToString()  
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
 
+module Hashset =
+  let ofSeq (s:'a seq) = Hashset(s)
+
 type System.Collections.Generic.List<'a> with
    static member Length (glist : Collections.Generic.List<'a>) = glist.Count
 
@@ -580,6 +627,17 @@ let eightBitsToByte (b:Collections.BitArray) =
      b.CopyTo(a,0) ; a.[0] 
 
 let toBool = (string >> (<>) "0")
+
+let bytesToBoolArray (i:byte []) = 
+    let b = Collections.BitArray(i)
+    let bits = Array.create b.Count false
+    b.CopyTo(bits, 0)
+    bits  
+
+let boolArrayToIntN size zero (b:bool[]) = 
+    let num = Array.create size zero
+    Collections.BitArray(b).CopyTo(num, 0)
+    num.[..size - 1]
 
 let int32ToBoolArray (i:int) = 
     let b = Collections.BitArray([|i|])

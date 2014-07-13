@@ -18,6 +18,12 @@ open Prelude.TrieDictionarySearch
 open System.Net
 open Prelude.SimpleGraphs
 open Prelude.StringMetrics
+
+/////////////
+
+
+["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (LowerCase w) -> w)
+["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (UpperCase w) -> w)
 ////////////
 
 longestCommonSubstring "apple" "appetitie"
@@ -107,6 +113,14 @@ autocomplete 2 t "ca"
 
 let m1 = Map.ofList [1,2; 2,3]
 let m2 = Map.ofList [1,5; 2,2; 3,7; 9,91]
+
+let d1 = Dict.ofIDict m1
+let d2 = Dict.ofIDict m2
+
+d1.MergeWith (-) d2
+d1.MergeWith konst d2
+
+d1 |> Seq.toArray |> Array.map keyValueToPair
 
 let m3 = Map.merge (+) id m1 m2
 let m4 = Map.merge (+) id m2 m1 
@@ -220,11 +234,6 @@ let craw = IO.File.ReadAllLines( dir + @"\concreg.csv") |> Array.map (fun s ->  
 let cdata_, ctest_ = craw |> Array.map (fun d -> d.[..d.Length - 2], d.LastElement) |> Array.shuffle |> Array.splitByPercent 0.75  
 let cdata, clbl = cdata_ |> Array.unzip 
 let ctst, ctlbl = ctest_ |> Array.unzip 
-
-let rootMeanError data lbls vec = 
-    (data, lbls) ||> Array.map2 (fun x y -> (Array.dotproduct vec x - y)**2.0) 
-                 |> Array.average
-                 |> sqrt
  
 open Prelude.Onlinelearning 
 

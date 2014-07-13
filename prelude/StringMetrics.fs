@@ -9,9 +9,9 @@ let inline bithamming zero one (a:^a) (b:^a) =
         | v -> countbits (dist + 1) (v &&& v - one)
     countbits 0 (a ^^^ b)
 
-let bithamming64 = bithamming 0UL 1UL
-let bithamming32 = bithamming 0ul 1ul
-let bithammingBytes = bithamming 0uy 1uy
+let bithammingu64 = bithamming 0UL 1UL
+let bithammingu32 = bithamming 0ul 1ul
+let bithammingByte = bithamming 0uy 1uy
   
 /////////////////////STRING METRICS////////////////
 
@@ -168,7 +168,7 @@ let inline splitNatATimeStr N (str:string) =
 
 let strTominHash splitWith = splitWith >> (minhashes 4)
 
-///very fast while fairly accurate way to fuzzy compare 2 strings. Suggested, take 2. Higher is better
+///very fast while fairly accurate way to fuzzy compare 2 strings. Suggested, take 2. For returned score, Higher is better
 let minHashStrDist splitTake str1 str2 = 
     if str1 = "" || str2 = "" then max str1.Length str2.Length 
     else let k0,k1 = min splitTake (str1.Length - 1) , min splitTake (str2.Length - 1) 

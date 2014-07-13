@@ -103,6 +103,14 @@ let perms n k = fac n / fac (n - k)
 ///num permutations of length n taken k at a time where order does not matter
 let combinations n k = fac n / (fac k * fac (n - k))
 
+//This is brilliant! From Harrop's F# for Scientists
+let rec powerset s = 
+  seq {
+    match s with
+    | [] -> yield []
+    | h::t -> for x in powerset t do yield! [x; h::x]
+  }
+
 // From: http://stackoverflow.com/questions/286427/calculating-permutations-in-f
 let rec internal insertions x = function
     | []  -> [[x]]
@@ -197,6 +205,7 @@ type Array with
  static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty
  static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
  static member inline magnitude v = Array.dotproduct v v |> sqrt 
+ static member inline to_unitvector v = let mag = Array.magnitude v in v |> Array.map (flip (/) mag)
  static member inline normalize (data: ^a[]) = 
      let total = data |> Array.sum
      data |> Array.map (flip (/) total) 
@@ -210,7 +219,7 @@ type Array with
  static member inline cosineSimilarityMag tol v1 v2 mag1 mag2 =
    Array.dotproduct v1 v2  / ((mag1 * mag2) + tol)
    
- static member transpose (a : 'a[][]) = 
+ static member transposeJagged (a : 'a[][]) = 
      [|for c in 0..a.[0].Length - 1 -> 
          [|for r in 0..a.Length - 1 -> a.[r].[c]|]|]
 
@@ -295,7 +304,7 @@ let baseNumToString (l:'a[]) lmap =
 
 ////////
 
-let secondsToStrings = function 
+let secondsToText = function 
     | 0. -> "Now"
     | x when x > 60. && x < 3600. -> let m = (x / 60.) |> round 2 in string m + " minutes"
     | x when x > 3600. && x <= 3600. * 24. -> ((x / 3600.) |> round 1 |> string) + " hours"
