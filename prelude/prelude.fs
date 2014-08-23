@@ -622,6 +622,23 @@ module Seq =
 
 ////////////////////////MISC////////////////////////
 
+type IO.Stream with
+  member stream.ReadInt () = 
+      let sizebuff = Array.create (sizeof<int>) 0uy
+      let _ = stream.Read(sizebuff,0,sizebuff.Length)
+      BitConverter.ToInt32(sizebuff,0)
+  member stream.ReadBool () = 
+      let sizebuff = Array.create (sizeof<bool>) 0uy
+      let _ = stream.Read(sizebuff,0,sizebuff.Length)
+      BitConverter.ToBoolean(sizebuff,0)
+  member stream.ReadArray size =
+    let buffer = Array.create size 0uy
+    let _ = stream.Read(buffer, 0,  size)
+    buffer
+
+  member stream.Reset() =
+     stream.Seek(0L,IO.SeekOrigin.Begin)
+
 let eightBitsToByte (b:Collections.BitArray) = 
      let a = [|0uy|]
      b.CopyTo(a,0) ; a.[0] 
