@@ -65,8 +65,8 @@ let testDouble s =
                return (num1 + num2)/2.
              | _ -> 
                 let! num = toDouble s
-                return num    } 
-    
+                return num    }  
+
 let (|Double|String|Int|) s = 
    match toInt s with
     | Some i -> Int i
@@ -216,6 +216,7 @@ type Dictionary<'a,'b>  with
  // static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
   static member ofSeq values = Dict(values |> dict) 
 
+  member this.iter f = for (DictKV(k,v)) in this do f v
   member this.getOrDef key def = 
      let found,v = this.TryGetValue key
      if found then v else def 
@@ -340,6 +341,10 @@ type Array with
 
 module Array =
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
+
+    let suffix n (s:'a[]) = s.[max 0 (s.Length - n)..] 
+    let prefix n (s:'a[]) = if s.Length = 0 then s else s.[..min (s.Length - 1) n] 
+
     let mapiFilter mapf filter (vec:'a []) = 
         let c = ref 0
         [|for a in vec do 
@@ -533,13 +538,42 @@ let splitstrWith s = splitstr [| s |]
 
 let splitstrKeepEmptyWith (splitters:string) (s:string) = s.Split([| splitters |], StringSplitOptions.None)
 
+let splitSentenceManual (s:string) = 
+   let sb = Text.StringBuilder()
+   let slist = MutableList()
+   let strmax = s.Length - 1
+
+   for n in 0..strmax do  
+      let c = s.[n]
+      if c = '?' || c = '!'  || c = '\n' 
+                 || (c = '\r' && n < strmax && s.[n + 1] <> '\n') 
+                 || (c = '.' && n > 0 
+                             && not (Char.IsDigit s.[n - 1]) 
+                             && (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
+                             && n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
+                             && n < strmax - 1 && s.[n+2] <> '.')
+         then 
+         if not(c = '\r' || c = '\n') then sb.Append c |> ignore
+         if sb.Length > 0 then slist.Add(sb.ToString())
+         sb.Clear() 
+         ()
+      else   
+         sb.Append c |> ignore 
+
+   slist.Add(sb.ToString())
+   slist.ToArray()
+
 type String with
    member t.splitbystr ([<ParamArray>] splitbys : string[]) = splitstr splitbys t
    member thisStr.splitbystrKeepEmpty ([<ParamArray>] splitbys : string[]) = thisStr.Split(splitbys, StringSplitOptions.None)
 
 module String =   
     let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
-    
+    let normalizeCapitilization (s:string) = string s + tolower(s.[1..])
+
+    let suffix n (s:string) = s.[max 0 (s.Length - n)..] 
+    let prefix zlenstr n (s:string) = if s.Length = 0 then zlenstr else s.[..min (s.Length - 1) n] 
+
     let padcut padlen (s:string) = 
        let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s
        usestr |> pad padlen

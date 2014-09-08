@@ -14,6 +14,8 @@ let inline squared (x: ^a) = x * x
 
 let log2 = log >> (flip (/) (log 2.))
 
+let nearestPow2 x = let n = log2 x |> ceil in  2. ** n
+
 let inline isPowerOf2 (ToFloat x) = let y = log2 x in y - floor y = 0. 
 
 let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =

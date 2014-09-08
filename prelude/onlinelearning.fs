@@ -13,6 +13,14 @@ let rootMeanError data lbls vec =
 
 let inline logistic z =  1./(1.+ exp(z))
 
+let internal regressStream alpha h op (xs : float []) (y:float) ws_ =
+    let ws = defaultArg ws_ (Array.init xs.Length (fun _ -> random.NextDouble() + 0.0001))  
+    let nw = h(Array.dotproduct xs ws) - y  
+    for j in 0..(ws.Length - 1) do 
+        ws.[j] <- op ws.[j] (alpha * nw * xs.[j])  
+                        
+    ws,nw
+
 let internal regress alpha h op (xs : float [][]) (ys:float[]) ws_ =
     let ws = defaultArg ws_ (Array.init xs.[0].Length (fun _ -> random.NextDouble() + 0.0001))  
     let rec loop err = function 
@@ -25,6 +33,8 @@ let internal regress alpha h op (xs : float [][]) (ys:float[]) ws_ =
     ws,er 
 
 let logisticRegress a xs ys = regress a logistic (+) xs ys 
+
+let logisticRegressStream a xs ys = regress a logistic (+) xs ys
 
 let linearRegressWH a xs ys  = regress a id (-) xs ys 
  
