@@ -551,7 +551,11 @@ let splitSentenceManual (s:string) =
                              && not (Char.IsDigit s.[n - 1]) 
                              && (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
                              && n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
-                             && n < strmax - 1 && s.[n+2] <> '.')
+                                      && not(s.[n-2] = 'w' && s.[n-1] = 'w')
+                             && n < strmax - 1 && s.[n+2] <> '.'
+                             && n < strmax - 2 && not(s.[n+3] = 'f' && s.[n+2] = 'd'&& s.[n+1] = 'p') 
+                                               && not(s.[n+3] = 'm' && s.[n+2] = 't' && s.[n+1] = 'h')
+                            )
          then 
          if not(c = '\r' || c = '\n') then sb.Append c |> ignore
          if sb.Length > 0 then slist.Add(sb.ToString())

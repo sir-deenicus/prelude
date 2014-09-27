@@ -201,17 +201,17 @@ let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =
        for j in 0..int den - 1 do
          outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
   outArr
-
+  
 type Array with
  static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
  static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty
  static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
- static member inline magnitude v = Array.dotproduct v v |> sqrt 
- static member inline to_unitvector v = let mag = Array.magnitude v in v |> Array.map (flip (/) mag)
+ static member inline magnitude v = Array.dotproduct v v |> sqrt  
+ static member inline to_unitvector v = let mag = Array.magnitude v in if mag = Unchecked.defaultof<'a> then v else v |> Array.map (flip (/) mag)
+ static member first def (a:'a[]) = if a.Length = 0 then def else a.[0]
  static member inline normalize (data: ^a[]) = 
      let total = data |> Array.sum
-     data |> Array.map (flip (/) total) 
- 
+     data |> Array.map (flip (/) total)  
   
  static member sampleOne (a:'a[]) = a.[random.Next(a.Length)]
  static member inline normalizeBy f (data: ^a []) = 
