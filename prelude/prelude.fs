@@ -11,18 +11,36 @@ open System.Linq
 type MutableList<'a> = System.Collections.Generic.List<'a>
 type Hashset<'a> = System.Collections.Generic.HashSet<'a>
 
-///////BASIC MONADS
+///////ERROR CONTROL FLOW MONADS
 
 ///A nested if builder is a maybe modified to work with raw conditional tests
 type NestedIfBuilder() =
     member this.Bind(x, f) =
        if x then f x
+       else () 
+    member this.Delay(f) = f() 
+    member this.Zero () = ()
+
+let nestif = NestedIfBuilder()  
+
+type NestedIfElseBuilder() =
+    member this.Bind(x, f) =
+       if x then f x
        else None 
     member this.Delay(f) = f()
     member this.Return(x) = Some x
-    member this.ReturnFrom(x) = x
+    member this.ReturnFrom(x) = x 
 
-let nestif = NestedIfBuilder() 
+let nestifElse = NestedIfElseBuilder()
+ 
+type ErrorBuilder() =
+    member this.Bind(x, f) =
+        try f (None,Some x)  
+        with e -> f (Some e, None) 
+
+    member this.Delay(f) = f()
+    member this.Return(x) = x
+    member this.ReturnFrom(x) = x
 
 type MaybeBuilder() =
     member this.Bind(x, f) =
@@ -34,6 +52,10 @@ type MaybeBuilder() =
     member this.ReturnFrom(x) = x
 
 let maybe = MaybeBuilder()
+
+let error = ErrorBuilder()
+
+let silentFailComputation f x = try Some(f x) with e -> None
 
 let inline (|ToFloat|) x = float x 
 
@@ -95,7 +117,7 @@ let inline keepLeft f (x,y) = x , f y
 
 let inline keepRight f (x,y) = f x , y
 
-let pairapply f (x,y) = (f x, f y)
+let inline pairapply f (x,y) = (f x, f y)
 
 let pair a b = a,b 
 
@@ -278,7 +300,10 @@ type IDictionary<'k,'v> with
         if not isin then t.Add(key,item)  
 
 module Map =
-    let inline sum m = m |> Map.fold (curryfst (+)) 0. 
+    let inline sum m = m |> Map.fold (curryfst (+)) Unchecked.defaultof<'a>
+    let inline normalize (m : Map<'a, 'b>) = 
+      let total = sum m
+      Map.map (fun _ v -> v / total) m
     let mapGetflip themap = flip (mapGet themap)  
 
     ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
@@ -298,6 +323,9 @@ let inline internal cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[
 
 module List =
   let inline sortByDescending f = List.sortBy (fun x -> -1. * float(f x))
+  let inline normalizeWeights (l: ('a * 'b) list) = 
+      let tot = List.sumBy snd l
+      List.map (keepLeft (flip (/) tot)) l
 
 type 'a ``[]`` with
   member inline self.LastElement = self.[self.Length - 1]
@@ -309,7 +337,7 @@ type Array with
 
   static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x)) 
   static member inline sortByDescendingLinq f (a:'a []) = a.OrderByDescending (System.Func<_,_> f) |> Array.ofSeq   
-  static member inline subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
+ 
   static member inline lastElement (a:'a []) = a.[a.Length - 1]
   static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
   static member inline get2 loc (a:'a[]) = a.[loc] 
@@ -339,8 +367,22 @@ type Array with
     let take = int(float(array.Length) * p)
     array.[0..take], array.[take+1..array.Length-1] 
 
+module Option =
+ let getDef def x = match x with Some n -> n | None -> def
+ let liftNull x = if x = null then None else Some x
+ let mapNull f x = if x = null then None else Some (f x)
+ let forAllNotEmpty f = function None -> false | Some x ->  f x
+
 module Array =
+    let inline normalizeWeights (a: ('a * 'b) []) = 
+      let tot = Array.sumBy snd a
+      Array.map (keepLeft (flip (/) tot)) a
+
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
+    let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
+    let filterElseTake filter map min_n n (a:'a[]) = 
+       let na = Array.filter filter a
+       if na.Length < min_n then subOrMax n (map a) else na
 
     let suffix n (s:'a[]) = s.[max 0 (s.Length - n)..] 
     let prefix n (s:'a[]) = if s.Length = 0 then s else s.[..min (s.Length - 1) n] 
@@ -367,16 +409,16 @@ module Array =
                 incr c
                 if filter i a then yield a|]
    
-    let applyToColumn op c (d:'a[][]) = d |> Array.map (filteri (curryfst (op c)))
+    let filterToColumn op c (d:'a[][]) = d |> Array.map (filteri (curryfst (op c)))
 
-    let applyToColumnSingle op c (d:'a[]) = d |> filteri (curryfst (op c))
-    let deleteCol c = applyToColumnSingle (<>) c
-    let deleteColumn c = applyToColumn (<>) c
+    let filterToColumnSingle op c (d:'a[]) = d |> filteri (curryfst (op c))
+    let deleteCol c = filterToColumnSingle (<>) c
+    let deleteColumn c = filterToColumn (<>) c
 
-    let selectColumn c = applyToColumn (=) c
+    let selectColumn c = filterToColumn (=) c
 
-    let selectColumns cs = applyToColumn (flip Set.contains) cs
-    let deleteColumns cs = applyToColumn (fun cols c -> Set.contains c cols |> not) cs
+    let selectColumns cs = filterToColumn (flip Set.contains) cs
+    let deleteColumns cs = filterToColumn (fun cols c -> Set.contains c cols |> not) cs
              
 //---------Array 2D----------
 type 'a ``[,]`` with
@@ -436,7 +478,7 @@ let removeExtraSpaces (s:string) =
                             curchar = ' ') false |> ignore
       sb.ToString().Trim()
 
-let removeExtraStrings (strToStrip:string) (s:string) = 
+let removeExtraString (strToStrip:string) (s:string) = 
       let sb = Text.StringBuilder()
       s |> Seq.fold ( fun waslastX curchar -> 
                        let curstr = string curchar
@@ -525,7 +567,7 @@ let (|StrContains|_|) testString (str : string) =
 let (|StrContainsOneOf|_|) (testStrings : string[]) str = testStrings |> Array.tryFind (containedinStr str) 
       
 let (|StrContainsAll|_|) (testStrings : string[]) str = 
-    nestif {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
+    nestifElse {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
 
 let (|StrContainsRemove|_|) t (str : string) = 
    if str.Contains(t) then Some(str.Replace(t,"")) else None 
@@ -631,6 +673,10 @@ module String =
        if Char.IsUpper c then outString.Append(' '); outString.Append(c)
        else outString.Append c
      outString.ToString()  
+
+///very simple heuristic
+let splitToParagraphs (s:string) = s.splitbystr("\n\n", "\r\n\r\n", "\010", "\r\r")
+
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
 
 module Hashset =
@@ -706,6 +752,7 @@ let boolArrayToInt32 (b:bool[]) =
     ints.[0]
 
 module DateTime = 
+  let ToLongDateShortTime (d:DateTime) = d.ToLongDateString () + ", " + d.ToShortTimeString()
   let StartOfWeek (startOfWeek:DayOfWeek) (dt:DateTime) =
     let diff = int(dt.DayOfWeek - startOfWeek)
     let wrap = if diff < 0 then 7 else 0
@@ -787,6 +834,26 @@ type IO.File with
 
 ////////
 
+let cleanURLofParams str =
+  let q = System.Text.RegularExpressions.Regex.Matches (str, "[?|#]")
+  if q.Count > 0 then
+    let findex = [for l in q -> l.Index] |> List.min 
+    str.[..findex-1]
+  else str                                                 
+
+let getUrlPath(url:string) = 
+  let uloc = url.LastIndexOf '/' 
+  let q = url.LastIndexOf '?'
+
+  if q <> -1 then url.[..q-1] + "/" else url.[..uloc]
+
+let getUrlRoot(url:string) = 
+  let uloc = url.IndexOf '/'  
+  if url.[uloc + 1] = '/' then 
+    url.[..url.IndexOf ('/',uloc + 2)]
+  else url.[..uloc]
+
+///////////////
 let getLocalIPs() =  
    Dns.GetHostEntry(Dns.GetHostName()).AddressList  
       |> Array.filter  (fun ip ->  ip.AddressFamily = Sockets.AddressFamily.InterNetwork) 
@@ -810,3 +877,6 @@ let unshorten (shorturl:string) =
     req.AllowAutoRedirect <- false
     req.GetResponse().Headers.["Location"]
  
+/////////////////
+let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
+

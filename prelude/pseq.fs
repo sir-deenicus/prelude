@@ -4,6 +4,8 @@ open System
 open System.Linq
 open System.Threading
 
+//From F# Foundation.http://fsprojects.github.io/FSharp.Collections.ParallelSeq/tutorial.html
+
 // Type abbreviation for parallel sequences.
 type pseq<'T> = ParallelQuery<'T>
 

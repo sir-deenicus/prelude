@@ -5,6 +5,7 @@
 #load "onlinelearning.fs"
 #load "Trie.fs"
 #load "TrieStringSearch.fs"
+#load "PriorityQueues.fs"
 #load "simplegraph.fs"
 #load "stringmetrics.fs"
 #time "on"
@@ -63,8 +64,11 @@ fg.GetEdges "a"
 fg.GetEdges "b"
 fg.GetEdges "c"
 fg.GetEdges "d"
- 
- ///////////
+
+////
+
+
+///////////
 
 Array.filteriMap (fun i x -> i + 3 < x && x % 2 = 0) squared [|0..2..9|]
 [|0..2..9|] |> Array.mapi pair |> Array.filter (fun (i,x) -> i + 3 < x && x % 2 = 0) |> Array.map (snd >> squared)

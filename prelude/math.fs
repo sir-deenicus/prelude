@@ -23,6 +23,21 @@ let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =
        a1.[i] <- a1.[i] + a2.[i]
 
 //***************************BASIC STATS******************//
+///simpleStats specific
+let pearsonsCorr (_,_, cov, vx, vy) = cov / (sqrt vx * sqrt vy) 
+
+let t_statistic r N = r / sqrt((1. - r **2.)/(N-2.))
+ 
+let invchi chi df = 
+    let m = chi / 2.0
+    let term = exp -m
+    let _,sum,_ = 
+       recurse (third >> int >> ((<=) (df/2))) 
+               (fun (t,s,i) ->  
+                    let t' = t * m/i 
+                    t', s + t' , i + 1.) 
+               (term, term, 1.) 
+    min sum 1.0 
 
 let cdf p = p |> Array.fold (fun (total, list) v -> 
                                 let cd = v + total
@@ -202,6 +217,12 @@ let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =
          outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
   outArr
   
+module Array =
+    let lp_norm f (vec1:float[]) (vec2:float[]) = Array.fold2 (fun sum x1 x2 -> f(x1 - x2) + sum) 0. vec1 vec2
+    let euclideanDist (vec1:float[]) (vec2:float[]) = lp_norm squared
+
+    let manhattanDist (vec1:float[]) (vec2:float[]) = lp_norm abs
+
 type Array with
  static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
  static member inline Op operator a b = Array.map2 operator a b                         //NOTE: in defaultof<>,no performance penalty

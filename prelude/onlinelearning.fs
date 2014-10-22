@@ -68,6 +68,13 @@ let knn distfunc n point data =
 
 let initWeights f d n = Array.init n (fun _ -> Array.init d (fun _ -> random.NextDouble() |> f))
 
+let initWeightsUniform def tounit d n = 
+   Array.init n 
+     (fun _ -> 
+      let a = Array.create d def 
+      if tounit then a |> Array.to_unitvector 
+      else a) 
+
 let inline initWeightsUnit f d n = 
     Array.init n 
      (fun _ -> 
