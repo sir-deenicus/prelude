@@ -758,33 +758,33 @@ k2.Peek()
 #time "on"
 
 let pqt = PriorityQueue2<int,int>()
-//~400 ms to add 100,000 ints | 4 secs for 1 mill
+//~400 ms to add 100,000 ints | 5 secs for 1 mill
 for i in 1..1000000 do pqt.Enqueue i i
 
-//8 secs | 1 min 30
+//8 secs | 1 min 55
 for i in 1..1000000 do pqt.Dequeue() 
 
 ////////////
-
+//useless because duplicate key -- weights not allowed
 let pq3t = PriorityQueue3<int,int>()
-//~50 ms to add 100,000 ints | 468 ms for 1 mill
+//~50 ms to add 100,000 ints | 660 ms for 1 mill
 for i in 1..1000000 do pq3t.Enqueue i i
 
-//1 secs | 14 secs
+//1 secs | 13 secs
 for i in 1..1000000 do pq3t.Dequeue() 
 
 //---------------
 
 let l = [1..1000000]
 
-//~300 ms to add 100,000 ints | 3 sec
+//~300 ms to add 100,000 ints | 4 sec
 let pqtf = List.foldBack (PriorityQueue.insert) l (PriorityQueue.empty true)
 
 let rec eq c (q:'a IPriorityQueue) =
  if q.IsEmpty then c, q
  else eq (c + 1) (snd <| q.Pop())
 
-//1 sec | 10 sec
+//1 sec | 12 sec
 let nq = eq 0 pqtf
 
 

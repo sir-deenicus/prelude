@@ -49,6 +49,7 @@
     <Compile Include="AgentDataStructures.fs" />
     <Compile Include="onlinelearning.fs" />
     <Compile Include="PriorityQueues.fs" />
+    <Compile Include="FibonacciHeap.fs" />
     <Compile Include="SimpleGraph.fs" />
     <None Include="some tests.fsx" />
   </ItemGroup>
