@@ -2,6 +2,7 @@
 
 open Prelude.Common
 open System
+open Prelude.Collections.FibonacciHeap
 //open Prelude.Collections
 
 [<AbstractClass>]
@@ -296,3 +297,45 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                             (v, i + 1, false) 
                       ) (root, 0, true)    
             tree
+
+  
+    member x.Vertices = Hashset(edges.Keys)
+
+
+    member g.dijkstra source target = 
+     let dists = Dict.ofSeq [source, 0.] 
+     let prev = Dict()
+     let vs = g.Vertices
+     let q = FibHeap.create ()
+     let visited = Hashset()
+     let nodeMap = Dict()
+                         
+     for v in vs do
+       if v <> source then dists.Add(v, Double.MaxValue)
+       prev.Add(v, None) |> ignore
+       let n = FibHeap.insert_data q v dists.[v]
+       nodeMap.Add(v, n)
+     
+     recurse 
+      (fun stop -> stop || FibHeap.size q <= 0)
+      (fun _ -> 
+        let next = FibHeap.extract_min_data q   
+        if next = target then true
+        else 
+          let adjs = g.GetEdges next
+          visited.Add next      
+                
+          match adjs with 
+            | None -> false
+            | Some vs ->  
+              vs |> Seq.iter (fun v2 -> 
+                if not (visited.Contains v2.X) then
+                  let alt = dists.[next] + v2.Weight                              
+                  if alt < dists.[v2.X] then 
+                    dists.[v2.X] <- alt
+                    prev.[v2.X] <- Some next
+                    FibHeap.decrease_key q nodeMap.[v2.X] alt)
+              false) (false)  
+      
+     recurse (fst >> Option.isNone)
+             (fun (Some p,l) -> prev.[p], p::l) (Some target, [])  

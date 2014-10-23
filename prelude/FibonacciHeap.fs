@@ -2,7 +2,7 @@
 
 //https://code.google.com/p/fiblib/downloads/detail?name=fiblib-0.1.tar.gz&can=2&q=
 
-(** The Fibonacci heap implementation. *)
+(** The Fibonacci heap implementation ported to F#. 1 hr *)
 
 (** Swap the contents of the given ref cells. *)
 let swap_refs x y =

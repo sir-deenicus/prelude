@@ -1,7 +1,8 @@
-#load "./prelude/prelude.fs"         
+﻿#load "./prelude/prelude.fs"         
 #load "./prelude/simplegraph.fs"
 #load "./prelude/math.fs"
 #load "./prelude/PriorityQueues.fs"
+#load "./prelude/fibonacciheap.fs"
 #time "on"
 open System
 open Prelude.Common
@@ -100,6 +101,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                   sorted.Add (WeightPart(w_v2.Weight, lessToLeft(k, w_v2.X))) 
                   |> ignore  )) 
       sorted
+    member x.Vertices = Hashset(edges.Keys)
 
     member x.MinimumSpanningTree() = 
             let currentCut = Hashset(edges.Keys)
@@ -236,6 +238,88 @@ c.Edges.Length
 b.Edges= c.Edges
 
 //////////////////////////
+
+open Prelude.Collections.FibonacciHeap
+
+let dijkstra (g:WeightedGraph<'a>) source target = 
+     let dists = Dict.ofSeq [source, 0.] 
+     let prev = Dict()
+     let vs = g.Vertices
+     let q = FibHeap.create ()
+     let visited = Hashset()
+     let nodeMap = Dict()
+                         
+     for v in vs do
+       if v <> source then dists.Add(v, Double.MaxValue)
+       prev.Add(v, None) |> ignore
+       let n = FibHeap.insert_data q v dists.[v]
+       nodeMap.Add(v, n)
+     
+     recurse 
+      (fun stop -> stop || FibHeap.size q <= 0)
+      (fun _ -> 
+        let next = FibHeap.extract_min_data q
+        //printfn "select: %A" next
+        if next = target then //printfn "found target" ;
+           true
+        else 
+          let adjs = g.GetEdges next
+          visited.Add next
+                             
+          //printfn "near: %A" adjs
+                
+          match adjs with 
+            | None -> false
+            | Some vs ->  
+              vs |> Seq.iter (fun v2 -> 
+                if not (visited.Contains v2.X) then
+                  let alt = dists.[next] + v2.Weight
+                  //printfn "current: %A, %A changed:%A "v2.X dists.[v2.X] alt
+                  if alt < dists.[v2.X] then 
+                    dists.[v2.X] <- alt
+                    prev.[v2.X] <- Some next
+                    FibHeap.decrease_key q nodeMap.[v2.X] alt)
+              false) (false)  
+      
+     recurse (fst >> Option.isNone)
+             (fun (Some p,l) -> 
+                //printfn "current node: %A" p
+                //printfn "current path: %A" l
+                prev.[p], p::l) (Some target, [])  
+
+
+(*     1
+   A -------B
+  1|   \  9 | 1
+   |_____\ C
+  E    4   | 1.
+           D  *)
+
+let wp = WeightedGraph<string> ()
+
+wp.InsertVertex "a"
+wp.InsertVertex "b" 
+wp.InsertVertex "c"
+wp.InsertVertex "d"
+wp.InsertVertex "e"
+
+wp.InsertEdge ("a", "b", 1.)  
+wp.InsertEdge ("b", "c", 1.)
+wp.InsertEdge ("c", "d", 1.)
+wp.InsertEdge ("a", "e", 1.)
+wp.InsertEdge ("e", "c", 4.)  
+wp.InsertEdge ("a", "c", 9.)  
+
+dijkstra wp "a" "e"
+dijkstra wp "a" "c"
+dijkstra wp "a" "d"
+dijkstra wp "b" "e"
+dijkstra wp "d" "e"   
+
+dijkstra wgr 5 44440
+
+wgr.Edges.Length
+   
 //let sg =  UndirectedGraph<int, Edge<int>>()
 //1 sec | with 1,15 edges: 4 secs 
 //for x in 0..100000 do
