@@ -166,36 +166,62 @@ type FastStringGraph2() =
       return elist |> Seq.map (fun i -> vertdata.[i]) |> Seq.toArray } 
 
 //////////
+//===================================================
 
 [<Struct;CustomComparison;CustomEquality>]                              
-type WeightPair<'a when 'a: equality> = 
-  val Weight : float; val Thing : 'a          
-  new(w:float,thing) = 
-    {Weight = w; Thing = thing} 
+type WeightPair<'a when 'a: comparison> = 
+  val Weight : float; val X : 'a ; val Y:'a      
+  new(w:float,x,y) = 
+    {Weight = w; X = x; Y = y} 
    
+  override x.ToString() = (string x.Weight) + ", " + (x.X.ToString()) + "," + (x.Y.ToString())
+ 
   interface IEquatable<WeightPair<'a>> with
         member this.Equals(other) =
-            this.Weight = other.Weight && this.Thing = other.Thing
-             
+            this.Weight = other.Weight && this.X = other.X && this.Y = other.Y
+
   interface IComparable<WeightPair<'a>> with
         member this.CompareTo(other) =
-            this.Weight.CompareTo(other.Weight)
+          if this.Weight = other.Weight then
+            compare (this.X, this.Y) (other.X, other.Y)
+          else this.Weight.CompareTo(other.Weight) 
+
+//===================================================
+
+[<Struct;CustomComparison;CustomEquality>]                              
+type WeightPart<'a when 'a: comparison> = 
+  val Weight : float; val X : 'a       
+  new(w:float,x) = 
+    {Weight = w; X = x} 
+   
+  override x.ToString() = (string x.Weight) + ", " + (x.X.ToString()) 
+ 
+  interface IEquatable<WeightPart<'a>> with
+        member this.Equals(other) =
+            this.Weight = other.Weight && this.X = other.X  
+
+  interface IComparable<WeightPart<'a>> with
+        member this.CompareTo(other) =
+          if this.Weight = other.Weight then
+            compare this.X other.X 
+          else this.Weight.CompareTo(other.Weight) 
+
+//===================================================
 
 type WeightedGraph<'a when 'a: equality and 'a:comparison>() = 
-    let edges = Dict<'a, Collections.Generic.SortedSet<WeightPair<'a>>>() 
+    let edges = Dict<'a, Hashset<WeightPart<'a>>>() 
     
     member x.EdgeData = edges 
-
     member x.InsertVertex(s:'a) =  
         let contained = edges.ContainsKey s
-        if not contained then edges.Add(s,Collections.Generic.SortedSet()) 
+        if not contained then edges.Add(s,Hashset()) 
         contained
     
     member x.Remove(v:'a) = 
        match (edges.tryFind v) with
         | None -> false
-        | Some elist ->                                              
-           elist |> Seq.iter (fun ((weight_v2)) -> edges.[weight_v2.Thing].Remove((weight_v2)) |> ignore)
+        | Some elist ->                                         
+           elist |> Seq.iter (fun ((weight_v2)) -> edges.[weight_v2.X].Remove(weight_v2) |> ignore)
            edges.Remove v
 
     member x.InsertEdge (v0,v1, w) = 
@@ -203,10 +229,10 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
         let! elist0 = edges.tryFind v0
         let! elist1 = edges.tryFind v1
 
-        elist0.Add (WeightPair(w, v1))
-        elist1.Add (WeightPair(w, v0))
+        let added1 = elist0.Add (WeightPart(w, v1))
+        let added2 = elist1.Add (WeightPart(w, v0))
        
-        return true}  
+        return (added1,added2)}  
 
     member x.ContainsVertex v = edges.ContainsKey v 
 
@@ -220,34 +246,53 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
          let! elist = edges.tryFind v  
          return elist }
 
+    member x.Edges = 
+      Hashset(x.EdgeData
+          |> Seq.collect (fun (DictKV(k,v)) -> 
+                                v |> Seq.map (fun (w_v2) -> lessToLeft(k, w_v2.X), w_v2.Weight) 
+                                  |> Seq.toArray) 
+          |> Seq.toArray) |> Seq.toArray
+
+    member x.OrderedEdges =
+      let sorted = Collections.Generic.SortedSet()    
+      x.EdgeData
+      |> Seq.iter 
+         (fun (DictKV(k,v)) -> 
+           v |> Seq.iter 
+                (fun (w_v2) -> 
+                  sorted.Add (WeightPart(w_v2.Weight, lessToLeft(k, w_v2.X))) 
+                  |> ignore  )) 
+      sorted
+
     member x.MinimumSpanningTree() = 
-            let vertices = edges.Keys |> Set.ofSeq
-            let root = Set.minElement vertices             
+            let currentCut = Hashset(edges.Keys)
+            let root = currentCut |> Seq.head
             let tree = FastGraphGeneric()
-        
-            let weightDict = edges |> Seq.map (fun (KeyValue(k,sq)) -> k, Collections.Generic.SortedSet(sq)) 
-                                   |> Dict.ofSeq 
+            let fs = Collections.Generic.SortedSet()    
 
-            recurse (fst3 >> Set.isEmpty)
-                    (fun (currentCut,v, i) -> 
-                          let elist = weightDict.[v]   
-                          match (elist.Count = 0) with 
-                           | true -> tree.InsertVertex v |> ignore //if v is root and not connected to anything  
-                                     let nextCut = currentCut.Remove v
-                                     if Set.isEmpty nextCut then (Set.empty , v, i) 
-                                     else (nextCut, nextCut.MinimumElement, i + 1)
-                           | false  ->    
-                              let (w,v2,wvec) = let wv = elist.Min in wv.Weight, wv.Thing, wv
-                              elist.Remove (wvec)  
-                           
-                              if i = 0 || (tree.ContainsVertex v && not (tree.ContainsVertex v2))
-                                || (tree.ContainsVertex v2 && not (tree.ContainsVertex v)) then
-                                tree.InsertVertex v |> ignore
-                                tree.InsertVertex v2  |> ignore
-                                tree.InsertEdge(v, v2) |> ignore      
+            let  _, _, steps =
+              recurse (fun _ -> currentCut.Count = 0)
+                    (fun (v, i, getnodes) ->         
+                          if getnodes then                            
+                            edges.[v] 
+                            |> Seq.iter (fun (w_v2) ->                                                    
+                                  if currentCut.Contains w_v2.X || currentCut.Contains v then   
+                                    fs.Add (WeightPair(w_v2.Weight,v,w_v2.X)) 
+                                    ()) 
+                          let v0,v2, _, next = 
+                              let minel = fs.Min in minel.X, minel.Y, minel.Weight, minel
+                             
+                          fs.Remove next
 
-                              weightDict.[v2].Remove(wvec) // remove the popped
-                              (currentCut.Remove v, v2, i + 1)) (vertices,root, 0) |> ignore
-                    
+                          if (currentCut.Contains v0 || currentCut.Contains v2) then 
+                            let vin0 = tree.InsertVertex v0
+                            let vin = tree.InsertVertex v2
+                            let nedge = tree.InsertEdge (v0, v2)
+                          
+                            currentCut.Remove v0 
+                            currentCut.Remove v2 
+                            (v2, i + 1, true)
+                          else                       
+                            (v, i + 1, false) 
+                      ) (root, 0, true)    
             tree
-

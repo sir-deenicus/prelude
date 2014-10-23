@@ -333,9 +333,11 @@ type MutablePriorityQueue<'Weight, 'Value when 'Weight: comparison and 'Value: c
     // Adds an items and heapifys
     let insertItem (key) (value) =
         let insertindex = heapList.Count
-        positionDict.Add((key,value), insertindex)
-        heapList.Add((key, value))
-        heapifyUp(insertindex)
+
+        if not (positionDict.ContainsKey  (key,value)) then
+          positionDict.Add((key,value), insertindex)
+          heapList.Add((key, value))
+          heapifyUp(insertindex)
 
     // Delete the root node and heapifys 
     let deleteItem index =
