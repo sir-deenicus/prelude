@@ -338,4 +338,4 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
               false) (false)  
       
      recurse (fst >> Option.isNone)
-             (fun (Some p,l) -> prev.[p], p::l) (Some target, [])  
+             (fun (Some p,l) -> prev.getOrDef p None, p::l) (Some target, [])  

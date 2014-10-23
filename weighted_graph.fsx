@@ -259,14 +259,13 @@ let dijkstra (g:WeightedGraph<'a>) source target =
       (fun stop -> stop || FibHeap.size q <= 0)
       (fun _ -> 
         let next = FibHeap.extract_min_data q
-        //printfn "select: %A" next
-        if next = target then //printfn "found target" ;
-           true
+        printfn "select: %A" next
+        if next = target then printfn "found target" ; true
         else 
           let adjs = g.GetEdges next
           visited.Add next
                              
-          //printfn "near: %A" adjs
+          printfn "near: %A" adjs
                 
           match adjs with 
             | None -> false
@@ -274,7 +273,7 @@ let dijkstra (g:WeightedGraph<'a>) source target =
               vs |> Seq.iter (fun v2 -> 
                 if not (visited.Contains v2.X) then
                   let alt = dists.[next] + v2.Weight
-                  //printfn "current: %A, %A changed:%A "v2.X dists.[v2.X] alt
+                  printfn "current: %A, %A changed:%A "v2.X dists.[v2.X] alt
                   if alt < dists.[v2.X] then 
                     dists.[v2.X] <- alt
                     prev.[v2.X] <- Some next
@@ -283,10 +282,9 @@ let dijkstra (g:WeightedGraph<'a>) source target =
       
      recurse (fst >> Option.isNone)
              (fun (Some p,l) -> 
-                //printfn "current node: %A" p
-                //printfn "current path: %A" l
-                prev.[p], p::l) (Some target, [])  
-
+                printfn "current node: %A" p
+                printfn "current path: %A" l   
+                prev.getOrDef p None, p::l) (Some target, [])     
 
 (*     1
    A -------B
@@ -314,7 +312,9 @@ dijkstra wp "a" "e"
 dijkstra wp "a" "c"
 dijkstra wp "a" "d"
 dijkstra wp "b" "e"
-dijkstra wp "d" "e"   
+dijkstra wp "d" "e"  
+
+dijkstra wp "a" "f" 
 
 dijkstra wgr 5 44440
 
