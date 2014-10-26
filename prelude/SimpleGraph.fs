@@ -22,6 +22,7 @@ type FastGraph<'a when 'a: comparison>() =
                                                 |> Seq.toArray) 
                         |> Seq.toArray) |> Seq.toArray
    
+
 type FastStringGraph() =  
     inherit FastGraph<string>()
     let edges = Dict<string,string Hashset>() 
@@ -60,6 +61,7 @@ type FastStringGraph() =
         maybe {
           let! elist = edges.tryFind v  
           return elist |> Seq.toArray } 
+
 
 type FastGraphGeneric<'a when 'a: equality and 'a:comparison>() = 
     inherit FastGraph<'a>() 
@@ -171,40 +173,40 @@ type FastStringGraph2() =
 
 [<Struct;CustomComparison;CustomEquality>]                              
 type WeightPair<'a when 'a: comparison> = 
-  val Weight : float; val X : 'a ; val Y:'a      
+  val Weight : float; val VertX : 'a ; val VertY:'a      
   new(w:float,x,y) = 
-    {Weight = w; X = x; Y = y} 
+    {Weight = w; VertX = x; VertY = y} 
    
-  override x.ToString() = (string x.Weight) + ", " + (x.X.ToString()) + "," + (x.Y.ToString())
+  override x.ToString() = (string x.Weight) + ", " + (x.VertX.ToString()) + "," + (x.VertY.ToString())
  
   interface IEquatable<WeightPair<'a>> with
         member this.Equals(other) =
-            this.Weight = other.Weight && this.X = other.X && this.Y = other.Y
+            this.Weight = other.Weight && this.VertX = other.VertX && this.VertY = other.VertY
 
   interface IComparable<WeightPair<'a>> with
         member this.CompareTo(other) =
           if this.Weight = other.Weight then
-            compare (this.X, this.Y) (other.X, other.Y)
+            compare (this.VertX, this.VertY) (other.VertX, other.VertY)
           else this.Weight.CompareTo(other.Weight) 
 
 //===================================================
 
 [<Struct;CustomComparison;CustomEquality>]                              
 type WeightPart<'a when 'a: comparison> = 
-  val Weight : float; val X : 'a       
+  val Weight : float; val Vert : 'a       
   new(w:float,x) = 
-    {Weight = w; X = x} 
+    {Weight = w; Vert = x} 
    
-  override x.ToString() = (string x.Weight) + ", " + (x.X.ToString()) 
+  override x.ToString() = (string x.Weight) + ", " + (x.Vert.ToString()) 
  
   interface IEquatable<WeightPart<'a>> with
         member this.Equals(other) =
-            this.Weight = other.Weight && this.X = other.X  
+            this.Weight = other.Weight && this.Vert = other.Vert  
 
   interface IComparable<WeightPart<'a>> with
         member this.CompareTo(other) =
           if this.Weight = other.Weight then
-            compare this.X other.X 
+            compare this.Vert other.Vert 
           else this.Weight.CompareTo(other.Weight) 
 
 //===================================================
@@ -222,7 +224,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
        match (edges.tryFind v) with
         | None -> false
         | Some elist ->                                         
-           elist |> Seq.iter (fun ((weight_v2)) -> edges.[weight_v2.X].Remove(weight_v2) |> ignore)
+           elist |> Seq.iter (fun ((weight_v2)) -> edges.[weight_v2.Vert].Remove(weight_v2) |> ignore)
            edges.Remove v
 
     member x.InsertEdge (v0,v1, w) = 
@@ -250,7 +252,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
     member x.Edges = 
       Hashset(x.EdgeData
           |> Seq.collect (fun (DictKV(k,v)) -> 
-                                v |> Seq.map (fun (w_v2) -> lessToLeft(k, w_v2.X), w_v2.Weight) 
+                                v |> Seq.map (fun (w_v2) -> lessToLeft(k, w_v2.Vert), w_v2.Weight) 
                                   |> Seq.toArray) 
           |> Seq.toArray) |> Seq.toArray
 
@@ -261,7 +263,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
          (fun (DictKV(k,v)) -> 
            v |> Seq.iter 
                 (fun (w_v2) -> 
-                  sorted.Add (WeightPart(w_v2.Weight, lessToLeft(k, w_v2.X))) 
+                  sorted.Add (WeightPart(w_v2.Weight, lessToLeft(k, w_v2.Vert))) 
                   |> ignore  )) 
       sorted
 
@@ -269,38 +271,39 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
             let currentCut = Hashset(edges.Keys)
             let root = currentCut |> Seq.head
             let tree = FastGraphGeneric()
-            let fs = Collections.Generic.SortedSet()    
+            let fs = Collections.Generic.SortedSet() 
 
             let  _, _, steps =
-              recurse (fun _ -> currentCut.Count = 0)
-                    (fun (v, i, getnodes) ->         
-                          if getnodes then                            
-                            edges.[v] 
-                            |> Seq.iter (fun (w_v2) ->                                                    
-                                  if currentCut.Contains w_v2.X || currentCut.Contains v then   
-                                    fs.Add (WeightPair(w_v2.Weight,v,w_v2.X)) 
-                                    ()) 
-                          let v0,v2, _, next = 
-                              let minel = fs.Min in minel.X, minel.Y, minel.Weight, minel
-                             
-                          fs.Remove next
+              recurse 
+                (fun _ -> currentCut.Count = 0)
+                (fun (v, i, getnodes) ->   
+                  if getnodes then                            
+                    edges.[v] 
+                    |> Seq.iter (fun (w_v2) ->                                           
+                          if currentCut.Contains w_v2.Vert || currentCut.Contains v then   
+                            fs.Add (WeightPair(w_v2.Weight,v,w_v2.Vert)) 
+                            ())
 
-                          if (currentCut.Contains v0 || currentCut.Contains v2) then 
-                            let vin0 = tree.InsertVertex v0
-                            let vin = tree.InsertVertex v2
-                            let nedge = tree.InsertEdge (v0, v2)
+                  if fs.Count = 0 then (currentCut |> Seq.head, i + 1, true)
+                  else 
+                    let v0,v2, _, next = 
+                        let minel = fs.Min 
+                        minel.VertX, minel.VertY, minel.Weight, minel
                           
-                            currentCut.Remove v0 
-                            currentCut.Remove v2 
-                            (v2, i + 1, true)
-                          else                       
-                            (v, i + 1, false) 
-                      ) (root, 0, true)    
-            tree
+                    fs.Remove next     
 
+                    if (currentCut.Contains v0 || currentCut.Contains v2 ) then 
+                      let vin0 = tree.InsertVertex v0
+                      let vin = tree.InsertVertex v2
+                      let nedge = tree.InsertEdge (v0, v2)
+                          
+                      currentCut.Remove v0 
+                      currentCut.Remove v2 
+                      (v2, i + 1, true)
+                    else (v, i + 1, false)) (root, 0, true)    
+            tree                         
   
-    member x.Vertices = Hashset(edges.Keys)
-
+    member x.Vertices = Hashset(edges.Keys)  
 
     member g.dijkstra source target = 
      let dists = Dict.ofSeq [source, 0.] 
@@ -329,13 +332,14 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
             | None -> false
             | Some vs ->  
               vs |> Seq.iter (fun v2 -> 
-                if not (visited.Contains v2.X) then
+                if not (visited.Contains v2.Vert) then
                   let alt = dists.[next] + v2.Weight                              
-                  if alt < dists.[v2.X] then 
-                    dists.[v2.X] <- alt
-                    prev.[v2.X] <- Some next
-                    FibHeap.decrease_key q nodeMap.[v2.X] alt)
-              false) (false)  
+                  if alt < dists.[v2.Vert] then 
+                    dists.[v2.Vert] <- alt
+                    prev.[v2.Vert] <- Some next
+                    FibHeap.decrease_key q nodeMap.[v2.Vert] alt)
+              false) (false) |> ignore  
       
      recurse (fst >> Option.isNone)
-             (fun (Some p,l) -> prev.getOrDef p None, p::l) (Some target, [])  
+             (fun (Some p,l) -> prev.getOrDef p None, p::l) 
+             (Some target, [])  

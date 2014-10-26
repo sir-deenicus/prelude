@@ -1,8 +1,8 @@
-﻿#load "./prelude/prelude.fs"         
-#load "./prelude/simplegraph.fs"
+﻿#load "./prelude/prelude.fs"     
 #load "./prelude/math.fs"
 #load "./prelude/PriorityQueues.fs"
-#load "./prelude/fibonacciheap.fs"
+#load "./prelude/fibonacciheap.fs"        
+#load "./prelude/simplegraph.fs"
 #time "on"
 open System
 open Prelude.Common
@@ -214,6 +214,8 @@ wg.InsertEdge ("e","g", 6.)
 wg.InsertEdge ("b","e", 10.)
 wg.InsertEdge ("d","e", 7.)
 
+wg.OrderedEdges  |> Seq.toArray
+
 let wgr = WeightedGraph<int>()      
                                    
 //with pque 13 secs | set 7 sec | .net sortedset 6 sec
@@ -306,7 +308,9 @@ wp.InsertEdge ("b", "c", 1.)
 wp.InsertEdge ("c", "d", 1.)
 wp.InsertEdge ("a", "e", 1.)
 wp.InsertEdge ("e", "c", 4.)  
-wp.InsertEdge ("a", "c", 9.)  
+wp.InsertEdge ("a", "c", 9.)
+
+wp.OrderedEdges |> Seq.toArray
 
 dijkstra wp "a" "e"
 dijkstra wp "a" "c"
@@ -319,7 +323,11 @@ dijkstra wp "a" "f"
 dijkstra wgr 5 44440
 
 wgr.Edges.Length
-   
+
+///////////
+let w_e = wgr.OrderedEdges 
+w_e.Count
+    
 //let sg =  UndirectedGraph<int, Edge<int>>()
 //1 sec | with 1,15 edges: 4 secs 
 //for x in 0..100000 do
