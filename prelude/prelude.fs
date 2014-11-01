@@ -331,7 +331,9 @@ type 'a ``[]`` with
   member inline self.LastElement = self.[self.Length - 1]
   member inline self.nthFromLast(i) = self.[self.Length - i - 1]
 
-type Array with  
+type Array with 
+  static member first def (a:'a[]) = if a.Length = 0 then def else a.[0]
+  
   static member inline lift x = [|x|]
   static member biPairs (a : 'a []) = [|for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1]|]
 
@@ -380,9 +382,9 @@ module Array =
 
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
     let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
-    let filterElseTake filter map min_n n (a:'a[]) = 
+    let filterElseTake filter sortfunc min_n n (a:'a[]) = 
        let na = Array.filter filter a
-       if na.Length < min_n then subOrMax n (map a) else na
+       if na.Length < min_n then subOrMax n (sortfunc a) else na
 
     let suffix n (s:'a[]) = s.[max 0 (s.Length - n)..] 
     let prefix n (s:'a[]) = if s.Length = 0 then s else s.[..min (s.Length - 1) n] 
@@ -466,7 +468,7 @@ let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[i
 let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
 let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> row|] |> Array.Parallel.map (fun row -> arr.[row].[col])
-
+                
 /////////////////////////////STRINGS////////////////////
 //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
 //not worth it for more general code
@@ -478,15 +480,6 @@ let removeExtraSpaces (s:string) =
                             curchar = ' ') false |> ignore
       sb.ToString().Trim()
 
-let removeExtraString (strToStrip:string) (s:string) = 
-      let sb = Text.StringBuilder()
-      s |> Seq.fold ( fun waslastX curchar -> 
-                       let curstr = string curchar
-                       if curstr = strToStrip && waslastX = true then true 
-                       else sb.Append(curstr) |> ignore
-                            curstr = strToStrip) false |> ignore
-      sb.ToString().Trim()
-
 let removeExtraChar (charToStrip:char) (s:string) = 
       let sb = Text.StringBuilder()
       s |> Seq.fold ( fun waslastX curchar ->  
@@ -495,10 +488,10 @@ let removeExtraChar (charToStrip:char) (s:string) =
                             curchar = charToStrip) false |> ignore
       sb.ToString().Trim()
 
-let removeExtraChars (charsToStrip:char[]) (s:string) = 
+let removeExtraChars (charsToStrip:char Set) (s:string) = 
       let sb = Text.StringBuilder()
       s |> Seq.fold ( fun waslastX curchar ->  
-                       let skipchar = contains curchar charsToStrip
+                       let skipchar = charsToStrip.Contains curchar 
                        if skipchar && waslastX = true then true 
                        else sb.Append(curchar) |> ignore
                             skipchar) false |> ignore
@@ -543,6 +536,12 @@ let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\
 
 let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
 
+let inline splitRegExKeepSplitters splitters s = 
+    System.Text.RegularExpressions.Regex.Split(s, sprintf @"(?<=[%s])" splitters)
+
+let inline splitregEx splitters s = 
+    System.Text.RegularExpressions.Regex.Split(s, splitters)
+
 let inline tolower (str:string) = str.ToLower()
 
 let inline toupper (str:string) = str.ToUpper()
@@ -561,6 +560,15 @@ let inline containedinStr (s:string) (sub:string) = s.Contains(trim sub)
 
 let strContainsAll testStrings str = testStrings |> Array.forall (containedinStr str) 
 
+let strContainsNof n (testStrings:string[]) (str:string) =
+   recurse fst4
+           (fun (_,_,i,m) ->
+              let within = str.Contains testStrings.[i]
+              let m' = if within then m+1 else m
+              let satisfied = m' >= n && within
+              satisfied || i=testStrings.Length-1, satisfied, i + 1, m') 
+           (false,false,0,0) |> snd4      
+
 let (|StrContains|_|) testString (str : string) = 
    if str.Contains(testString) then Some(true) else None  
 
@@ -571,6 +579,11 @@ let (|StrContainsAll|_|) (testStrings : string[]) str =
 
 let (|StrContainsRemove|_|) t (str : string) = 
    if str.Contains(t) then Some(str.Replace(t,"")) else None 
+
+let (|StrContainsGroupRegEx|_|) t (str : string) = 
+   if Text.RegularExpressions.Regex.IsMatch(str, t) then 
+      let groups = Text.RegularExpressions.Regex.Match(str, t)
+      Some([|for g in groups.Groups -> g.Value|]) else None 
 
 let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
@@ -611,13 +624,20 @@ let splitSentenceManual (s:string) =
 
 type String with
    member t.splitbystr ([<ParamArray>] splitbys : string[]) = splitstr splitbys t
+
+   member s.Last = s.[s.Length - 1]
+   
    member thisStr.splitbystrKeepEmpty ([<ParamArray>] splitbys : string[]) = thisStr.Split(splitbys, StringSplitOptions.None)
 
-module String =   
+module String =  
+    let removeSymbols s = s |> Seq.filter (Char.IsSymbol >> not) |> joinToString
+ 
     let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
+  
     let normalizeCapitilization (s:string) = string s + tolower(s.[1..])
 
     let suffix n (s:string) = s.[max 0 (s.Length - n)..] 
+  
     let prefix zlenstr n (s:string) = if s.Length = 0 then zlenstr else s.[..min (s.Length - 1) n] 
 
     let padcut padlen (s:string) = 
@@ -672,10 +692,48 @@ module String =
      for c in s do
        if Char.IsUpper c then outString.Append(' '); outString.Append(c)
        else outString.Append c
-     outString.ToString()  
+     outString.ToString() 
+   
+    let findIndexi isForwards f i s = 
+         let len = String.length s
+         if i < 0 || i >= len then None 
+         else recurse fst3
+                      (fun (_, j, _) ->
+                         let found = f j s.[j]              
+                         found || (if isForwards then (j+1) >= len else (j-1) < 0),
+                         (if isForwards then j + 1 else j - 1), 
+                         (if found then Some j else None))
+                      (false, i, None)  
+                      |> third  
 
 ///very simple heuristic
 let splitToParagraphs (s:string) = s.splitbystr("\n\n", "\r\n\r\n", "\010", "\r\r")
+
+let removeExtrasOfString (strToStrip:string) (s:string) = 
+     s.splitbystr (strToStrip) |> joinToStringWith strToStrip 
+                                                       
+let findSentenceTerminus lookforward numtake i s = 
+  let strmax = String.length s - 1
+  if lookforward && i = strmax || not lookforward && i = 0 then (0,[])
+  else recurse fst3
+          (fun (_,(seen,seens),n) ->        
+            let found =
+              if n < 0 || n >= strmax then false
+              else let c = s.[n]  
+                   c = '?' || c = '!'  || c = '\n' 
+                          || (c = '\r' && n < strmax && s.[n + 1] <> '\n') 
+                          || (c = '.' && n > 0 
+                                      && not (Char.IsDigit s.[n - 1]) 
+                                      && (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
+                                      && n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
+                                              && not(s.[n-2] = 'w' && s.[n-1] = 'w')
+                                      && n < strmax - 1 && s.[n+2] <> '.'
+                                      && n < strmax - 2 && not(s.[n+3] = 'f' && s.[n+2] = 'd'&& s.[n+1] = 'p') 
+                                                        && not(s.[n+3] = 'm' && s.[n+2] = 't' && s.[n+1] = 'h'))
+            
+            found && seen+1 = numtake || (if lookforward then n >= strmax else n < 0), 
+            (if found || (lookforward && n = strmax || n = 0 && not lookforward) then (seen + 1,n::seens) else (seen, seens)), 
+            (if lookforward then n + 1 else n - 1)) (false,(0,[]),i) |> snd3 
 
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
 
@@ -695,6 +753,24 @@ module Seq =
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
   let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
+
+  
+  let filteri filter (vec:'a seq) = 
+     let c = ref 0
+     seq {for a in vec do 
+             let i = !c
+             incr c
+             if filter i a  then yield a} 
+
+  let findIndexi cond (s:Collections.Generic.IEnumerable<'a>) =
+     let mutable c = 0 
+     let enum = s.GetEnumerator()
+     recurse (fst) 
+             (fun (_,i) ->  
+                 let x = enum.MoveNext()
+                 if not x then true, -1
+                 elif cond i enum.Current then true, i
+                 else false, i + 1) (false,0) |> snd
   
   let takeOrMax n (seqs:'a seq) =
     let counter = ref 0
@@ -834,6 +910,8 @@ type IO.File with
 
 ////////
 
+let urlencode str = Uri.EscapeDataString str |> replace "%20" "+"
+
 let cleanURLofParams str =
   let q = System.Text.RegularExpressions.Regex.Matches (str, "[?|#]")
   if q.Count > 0 then
@@ -879,4 +957,4 @@ let unshorten (shorturl:string) =
  
 /////////////////
 let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
-
+  

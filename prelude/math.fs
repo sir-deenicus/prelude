@@ -229,7 +229,6 @@ type Array with
  static member inline dotproduct v1 v2 = Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> v1 v2
  static member inline magnitude v = Array.dotproduct v v |> sqrt  
  static member inline to_unitvector v = let mag = Array.magnitude v in if mag = Unchecked.defaultof<'a> then v else v |> Array.map (flip (/) mag)
- static member first def (a:'a[]) = if a.Length = 0 then def else a.[0]
  static member inline normalize (data: ^a[]) = 
      let total = data |> Array.sum
      data |> Array.map (flip (/) total)  

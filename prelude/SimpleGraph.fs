@@ -101,38 +101,6 @@ type FastGraphGeneric<'a when 'a: equality and 'a:comparison>() =
         let! elist = edges.tryFind v  
         return elist |> Seq.toArray } 
 
-//type FastMultiGraph<'a, 'b, 'c when 'a: equality and 'a:comparison>() =  
-//    let edges = Dict<'a, Dict<'a, 'c>>() 
-//    
-//    member x.EdgeData = edges :> Collections.Generic.IDictionary<'a, Dict<'a, 'c>>
-//
-//    member x.InsertVertex(s:'a,item:'c, update) =  
-//        let contained = edges.ContainsKey s
-//        if not contained then edges.Add(s, Dict()) 
-//        else edges.[s].ExpandElseAdd  update item
-//        contained
-//
-//    member x.InsertEdge (v0,v1, etag) = 
-//        maybe {
-//        let! elist0 = edges.tryFind v0
-//        let! elist1 = edges.tryFind v1
-//
-//        let in0 = elist0.Add (v1,etag)
-//        let in1 = elist1.Add (v0,etag)
-//       
-//        return (in0,in1)}  
-//
-//    member x.ContainsVertex v = edges.ContainsKey v 
-//
-//    member x.ContainsEdge v1 v2 = 
-//        maybe {
-//        let! elist0 = edges.tryFind v1 
-//        return (elist0.ContainsKey v2)}  
-//
-//    member x.GetEdges v = 
-//        maybe {
-//        let! elist = edges.tryFind v  
-//        return elist |> Seq.toArray } 
 
 ///uses integer list for edges, better for Dense graphs.
 type FastStringGraph2() = 

@@ -6,6 +6,7 @@
 #load "Trie.fs"
 #load "TrieStringSearch.fs"
 #load "PriorityQueues.fs"
+#load "FibonacciHeap.fs"
 #load "simplegraph.fs"
 #load "stringmetrics.fs"
 #time "on"
@@ -26,6 +27,14 @@ splitSentenceManual "ye. water will be 4. dollars.I say\n yes Mr. fred it's .5 t
 
 ["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (LowerCase w) -> w)
 ["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (UpperCase w) -> w)
+
+///////////////////////
+   
+findIndexi true ((=) 'f') 4 "fright"
+findIndexi false ((=) 'f') 4 "fright"
+findIndexi false ((=) 'i') 4 "fright"
+findIndexi true ((=) 'i') 4 "fright"
+
 ////////////
 
 longestCommonSubstring "apple" "appetitie"
@@ -164,6 +173,42 @@ timeThis 100 (fun _ ->
     c |> Seq.toArray) 
 // |> Reducer.groupBy id (fun _ -> 1) (fun (_, items) -> Seq.sum items)
 
+///////////////
+
+strContainsNof 1 [|"apple"; "tree"|] "jumped off the tree"
+strContainsNof 2 [|"apple"; "tree"|] "jumped off the tree"
+strContainsNof 2 [|"apple"; "tree"|] "jumped off the apple tree"
+strContainsNof 2 [|"apple"; "tree"; "plum"|] "jumped off the plum tree"
+
+/////////////
+removeExtrasOfString newLine (sprintf "hello%s%sthere%s%s%syes" newLine newLine newLine newLine newLine)
+
+removeExtrasOfString "<br/><br/>" "hey<br/>there<br/><br/>now<br/><br/><br/>oh"
+
+"hey<br/>there<br/><br/>now<br/><br/><br/><br/><br/>oh".splitbystr ("<br/><br/>")  |> joinToStringWith("<br/><br/>")
+ 
+
+//////
+//printfn "%A %A %A" (if n > 0 then s.[n] else ' ') n (found || (lookforward && n = strmax || n = 0 && not lookforward))
+            
+let (n,[i]) = findSentenceTerminus true 1 0 "bolt the door. quick in here. who goes there."
+let (n2,[i2]) = findSentenceTerminus true 1 (i+1) "bolt the door. quick in here. who goes there."
+let (n3,[i3]) = findSentenceTerminus true 1 (i2+1) "bolt the door. quick in here. who goes there."
+
+findSentenceTerminus true 2 (i2+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus true 2 (i+1) "bolt the door. quick in here. who goes there."
+
+findSentenceTerminus false 1 0 "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 1 5 "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 1 (i+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 2 (i+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 3 (i+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 3 (44) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 2 44 "bolt the door. quick in here. who goes there."     
+
+"bolt the door. quick in here. who goes there.".[..i]
+"bolt the door. quick in here. who goes there.".[i+1..i2]
+"bolt the door. quick in here. who goes there.".[i2+1..i3]
 ////////////////Testing Threadsafe random numbers
 let inf x =
     let var, mean= x |> varianceAndMean
