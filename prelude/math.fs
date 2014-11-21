@@ -22,6 +22,8 @@ let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =
     for i in 0..a1.Length - 1 do 
        a1.[i] <- a1.[i] + a2.[i]
 
+let inline (|ToFloatArray|) d = d |> Array.map float
+
 //***************************BASIC STATS******************//
 ///simpleStats specific
 let pearsonsCorr (_,_, cov, vx, vy) = cov / (sqrt vx * sqrt vy) 
@@ -190,6 +192,8 @@ type randomInt (rNext, lower,upper) =
 
 let inline round (places:int) (num: float) = Math.Round(num, places)
 
+let (|RoundTo|) n x = round n x 
+
 ///buckets rounds a number to roundTo places then buckets with bucketSize. where all numbers are floored to last 
 ///multiple of bucketSize so for example
 ///bucketRange 2 5 n will round to 2 places and allow only multiples of 5. n = 11..14 -> 10
@@ -206,7 +210,18 @@ let scaleTo rmin rmax rangemin rangemax value =
                                   else rangemin, rangemax , value //translate to 0
     
    (adjval - adjrmin)/(adjrmax - adjrmin) * (rmax-rmin) + rmin
-   
+
+///a bit like a bucket, a bit like a round numbers can be flattened to powers of 10.
+///10..10..100, 1000...1000...10000, 1000..100..10000 and so on
+///n controls how many places to "round" by e.g. where to bucket x * 10^3 by 100 or 10 or 1
+let log10bucket n x_ = 
+ if x_ = 0. then 0. else
+ let x  = x_ |> abs |> round 0 
+ let exponent = x |> log10 |> floor
+ let y_decim = (x * 1./(10. ** exponent)) 
+ let y' = y_decim |> round n
+ y' * (10. ** exponent) * (sign x_ |> float)
+
 //***************************Array Useful Vector Math******************//
 
 let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =  
@@ -218,10 +233,9 @@ let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =
   outArr
   
 module Array =
-    let lp_norm f (vec1:float[]) (vec2:float[]) = Array.fold2 (fun sum x1 x2 -> f(x1 - x2) + sum) 0. vec1 vec2
-    let euclideanDist (vec1:float[]) (vec2:float[]) = lp_norm squared
-
-    let manhattanDist (vec1:float[]) (vec2:float[]) = lp_norm abs
+    let inline lp_norm f (vec1:'a[]) (vec2:'a[]) = Array.fold2 (fun sum x1 x2 -> f(x1 - x2) + sum) 0. vec1 vec2
+    let inline euclideanDist v v2 = lp_norm (float >> squared) v v2 |> sqrt 
+    let inline manhattanDist v v2 = lp_norm (float >> abs) v v2 
 
 type Array with
  static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 

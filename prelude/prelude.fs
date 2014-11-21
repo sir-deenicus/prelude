@@ -65,6 +65,8 @@ let inline (|ToString|) x = string x
 
 let inline (|ToStringArray|) d = d |> Array.map string
 
+let (|ToArray|) d = d |> Seq.toArray
+
 let inline isNumber n = Double.TryParse n |> fst 
 
 let toDouble s = 
@@ -217,6 +219,16 @@ let inline fifth (_,b,c,d,e) = e
 let inline fifth7 (_,_,_,_,el,_,_) =  el
 
 let inline sixth7 (_,_,_,_,_,el,_) =  el
+
+let ``fst&fourth`` (a,b,c,d) = a,d
+
+let ``fst&third`` (a,b,c) = a,c
+
+let ``fst&second`` (a,b,c) = a,b
+
+let ``second&third`` (a,b,c) = b,c 
+
+let ``third&fourth`` (a,b,c,d) = c,d
 
 //////////////////MAPS/////////////////////////////////
 
@@ -388,7 +400,7 @@ module Array =
 
     let suffix n (s:'a[]) = s.[max 0 (s.Length - n)..] 
     let prefix n (s:'a[]) = if s.Length = 0 then s else s.[..min (s.Length - 1) n] 
-
+    let liftPair (x,y) = [|x;y|]
     let mapiFilter mapf filter (vec:'a []) = 
         let c = ref 0
         [|for a in vec do 
@@ -614,7 +626,7 @@ let splitSentenceManual (s:string) =
          then 
          if not(c = '\r' || c = '\n') then sb.Append c |> ignore
          if sb.Length > 0 then slist.Add(sb.ToString())
-         sb.Clear() 
+         let _ = sb.Clear() 
          ()
       else   
          sb.Append c |> ignore 
@@ -654,10 +666,10 @@ module String =
         let sbuilder = Text.StringBuilder()
 
         spacedstr |> Array.iter (fun w -> if items.Contains w then 
-                                               sbuilder.Append (f w)
-                                               sbuilder.Append " "; 
-                                          else sbuilder.Append w
-                                               sbuilder.Append " " 
+                                               let _ = sbuilder.Append (f w)
+                                               sbuilder.Append " " |> ignore
+                                          else sbuilder.Append w |> ignore
+                                               sbuilder.Append " "  |> ignore
                                           ()) 
         sbuilder.ToString()   
 
@@ -900,7 +912,7 @@ type IO.File with
      else
       IO.File.WriteAllText(fname, "") |> ignore
       ""
-  static member ReadAllLinesOrCreate(fname:string) =
+ static member ReadAllLinesOrCreate(fname:string) =
      if IO.File.Exists(fname) then
       IO.File.ReadAllLines(fname)
      else
@@ -911,6 +923,8 @@ type IO.File with
 ////////
 
 let urlencode str = Uri.EscapeDataString str |> replace "%20" "+"
+
+let urldecode str = Uri.UnescapeDataString str |> replace "+" " "
 
 let cleanURLofParams str =
   let q = System.Text.RegularExpressions.Regex.Matches (str, "[?|#]")
