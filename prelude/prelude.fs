@@ -224,9 +224,9 @@ let ``fst&fourth`` (a,b,c,d) = a,d
 
 let ``fst&third`` (a,b,c) = a,c
 
-let ``fst&second`` (a,b,c) = a,b
+let ``fst&snd`` (a,b,c) = a,b
 
-let ``second&third`` (a,b,c) = b,c 
+let ``snd&third`` (a,b,c) = b,c 
 
 let ``third&fourth`` (a,b,c,d) = c,d
 
@@ -391,6 +391,7 @@ module Array =
     let inline normalizeWeights (a: ('a * 'b) []) = 
       let tot = Array.sumBy snd a
       Array.map (keepLeft (flip (/) tot)) a
+    let flattenGroupBy sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
 
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
     let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
