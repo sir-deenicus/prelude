@@ -110,7 +110,7 @@ let knn distfunc n point data =
 let initWeights f d n = Array.init n (fun _ -> Array.init d (fun _ -> random.NextDouble() |> f))
 
 
-let initWeightsUniform def tounit d n = 
+let inline initWeightsUniform def tounit d n = 
    Array.init n 
      (fun _ -> 
       let a = Array.create d def 

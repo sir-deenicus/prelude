@@ -220,15 +220,17 @@ let inline fifth7 (_,_,_,_,el,_,_) =  el
 
 let inline sixth7 (_,_,_,_,_,el,_) =  el
 
-let ``fst&fourth`` (a,b,c,d) = a,d
+let fst_fourth (a,b,c,d) = a,d
 
-let ``fst&third`` (a,b,c) = a,c
+let fst_third (a,b,c) = a,c
 
-let ``fst&snd`` (a,b,c) = a,b
+let fst_snd (a,b,c) = a,b
 
-let ``snd&third`` (a,b,c) = b,c 
+let fst_snd5 (a,b,c,d,e) = a,b
 
-let ``third&fourth`` (a,b,c,d) = c,d
+let snd_third (a,b,c) = b,c 
+
+let third_fourth (a,b,c,d) = c,d
 
 //////////////////MAPS/////////////////////////////////
 
@@ -241,7 +243,7 @@ let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
 type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b> 
-
+type IDict<'a,'b> = Collections.Generic.IDictionary<'a, 'b>
 //combinators don't make sense for mutable types
 module Dict = 
   let ofIDict (d:Collections.Generic.IDictionary<'a,'b>) = Dict d
@@ -344,6 +346,12 @@ type 'a ``[]`` with
   member inline self.nthFromLast(i) = self.[self.Length - i - 1]
 
 type Array with 
+  static member rot places a =
+     let n = Array.length a  
+     a |> Array.permute (fun i -> 
+          let modulo = ((i + places) % n)                          
+          if i + p < 0 && modulo <> 0 then n + modulo else modulo)
+         
   static member first def (a:'a[]) = if a.Length = 0 then def else a.[0]
   
   static member inline lift x = [|x|]
@@ -372,7 +380,7 @@ type Array with
                  let steps = max (arr.Length / ways) 1
                  [| for i in 0..steps..arr.Length - steps -> arr.[i..i + steps - 1]|]
 
-  static member splitIntoNPieces n (arr : 'a []) =  
+  static member split_TakeN_atATime n (arr : 'a []) =  
     let steps = n
     let len = arr.Length - 1
     [| for i in 0..steps..arr.Length - 1 -> arr.[i..min (i + steps - 1) len]|]
@@ -654,7 +662,7 @@ module String =
     let prefix zlenstr n (s:string) = if s.Length = 0 then zlenstr else s.[..min (s.Length - 1) n] 
 
     let padcut padlen (s:string) = 
-       let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s
+       let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s + "  "
        usestr |> pad padlen
 
     let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
@@ -720,7 +728,7 @@ module String =
                       |> third  
 
 ///very simple heuristic
-let splitToParagraphs (s:string) = s.splitbystr("\n\n", "\r\n\r\n", "\010", "\r\r")
+let splitToParagraphs isweb (s:string) = if isweb then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
 
 let removeExtrasOfString (strToStrip:string) (s:string) = 
      s.splitbystr (strToStrip) |> joinToStringWith strToStrip 
@@ -850,7 +858,7 @@ module DateTime =
     
 let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1).ToUniversalTime()).TotalSeconds 
 
-let fromUnixTime timestamp =   DateTime(1970,1,1,0,0,0,0).AddSeconds(timestamp)
+let fromUnixTime timestamp = DateTime(1970,1,1,0,0,0,0).AddSeconds(timestamp)
 
 let fromUnixTimeMicroSec timestamp = DateTime(1970,1,1,0,0,0,0).AddMilliseconds(timestamp/1000.)
 

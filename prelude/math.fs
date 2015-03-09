@@ -109,18 +109,33 @@ let inline median (x: ^a [])=
     else float med 
 
 //***************************PERMUTATIONS AND CHANCE******************//
+//let rec partitions = function                                     
+//  | 0 -> []
+//  | n ->                 
+//    let k = [1] :: partitions (n-1)                           
+//    [for p in k do           
+//      yield [1] @ p
+//      if p.Length  < 2 || p.Tail.Head > p.Head then
+//       yield [p.Head + 1] @ p.Tail]
+
+///n is integer, k number of summands              
+let rec num_partitions = function
+ | (k,n) when k > n -> 0.
+ | (k,n) when k = n -> 1.
+ | k, n -> num_partitions(k + 1., n) + num_partitions(k , n - k)
 
 let facI n = [2I..n] |> List.fold (*) 1I
-
-let permsI n k = facI n / facI (n - k)
+                                         
+let permsI n k = [(n-k+1I)..n] |> List.fold (*) 1I
 
 let fac n = [2.0..n] |> List.fold (*) 1.
 
-///num permutations of length n taken k at a time
-let perms n k = fac n / fac (n - k)
+///num permutations of length n taken k at a time     
+let perms n k = [(n-k+1.)..n] |> List.fold (*) 1.
 
 ///num permutations of length n taken k at a time where order does not matter
-let combinations n k = fac n / (fac k * fac (n - k))
+///let combinations n k = fac n / (fac k * fac (n - k))
+let combinations n k = perms n k / fac k  
 
 //This is brilliant! From Harrop's F# for Scientists
 let rec powerset s = 
