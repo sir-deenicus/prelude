@@ -347,15 +347,15 @@ type 'a ``[]`` with
 
 type Array with 
   static member rot places a =
-     let n = Array.length a  
-     a |> Array.permute (fun i -> 
-          let modulo = ((i + places) % n)                          
-          if i + p < 0 && modulo <> 0 then n + modulo else modulo)
-         
+      let n = Array.length a  
+      a |> Array.permute (fun i -> 
+            let modulo = ((i + places) % n)                          
+            if i + places < 0 && modulo <> 0 then n + modulo else modulo)    
+
   static member first def (a:'a[]) = if a.Length = 0 then def else a.[0]
   
   static member inline lift x = [|x|]
-  static member biPairs (a : 'a []) = [|for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1]|]
+  static member pairNexts (a : 'a []) = [|for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1]|]
 
   static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x)) 
   static member inline sortByDescendingLinq f (a:'a []) = a.OrderByDescending (System.Func<_,_> f) |> Array.ofSeq   
@@ -372,6 +372,7 @@ type Array with
   static member countAndMax array =  
      let counts = array |> Array.countElements 
      counts, counts |> (Seq.maxBy keyValueToValue) |> keyValueToPair
+  
   static member takeAtPercent p (a: 'a []) = let len = float a.Length in a.[..max 0 (int(round(p * len)) - 1)]
   static member  mapFilter f cond (seqs:'a[]) = [|for el in seqs do let mapped = f el in if cond mapped then yield mapped|] 
   static member sub2 start ends (arr:'a []) = arr.[start..ends]
@@ -396,9 +397,7 @@ module Option =
  let forAllNotEmpty f = function None -> false | Some x ->  f x
 
 module Array =
-    let inline normalizeWeights (a: ('a * 'b) []) = 
-      let tot = Array.sumBy snd a
-      Array.map (keepLeft (flip (/) tot)) a
+    
     let flattenGroupBy sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
 
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
@@ -550,6 +549,13 @@ let inline splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, 
 
 let slpitStrs = [|"." ; " "; "," ; "\t"; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "(" ; ")"; "\000"; Environment.NewLine; "—"; "<"; ">";"[";"]";"“"|]
  
+let seplist andor (ws : string[]) = 
+   match ws.Length with
+   | 1 ->  ws.[0]
+   | 0 -> ""
+   | _ -> let p1 = ws.[..ws.Length - 2] |> joinToStringWith ", " 
+          p1 + " " + andor + " " + ws.LastElement
+
 ///splits to words using the following characters: \s \t . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
 let splitToWords = splitstr slpitStrs
 ///Like regular splitToWords but uses a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
@@ -728,7 +734,7 @@ module String =
                       |> third  
 
 ///very simple heuristic
-let splitToParagraphs isweb (s:string) = if isweb then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
+let splitToParagraphs singlebreak (s:string) = if singlebreak then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
 
 let removeExtrasOfString (strToStrip:string) (s:string) = 
      s.splitbystr (strToStrip) |> joinToStringWith strToStrip 

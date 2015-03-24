@@ -251,6 +251,9 @@ module Array =
     let inline lp_norm f (vec1:'a[]) (vec2:'a[]) = Array.fold2 (fun sum x1 x2 -> f(x1 - x2) + sum) 0. vec1 vec2
     let inline euclideanDist v v2 = lp_norm (float >> squared) v v2 |> sqrt 
     let inline manhattanDist v v2 = lp_norm (float >> abs) v v2 
+    let inline normalizeWeights (a: ('a * 'b) []) = 
+      let tot = Array.sumBy snd a
+      Array.map (keepLeft (flip (/) tot)) a
 
 type Array with
  static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 

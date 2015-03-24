@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "prelude", "prelude\prelude.fsproj", "{8D93FCAF-EFD3-48C4-96CB-AE9DE845ADD6}"
-EndProject
+# Visual Studio 2013
+VisualStudioVersion = 12.0.31101.0
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Experiments", "Experiments", "{F46A9D3C-A01C-4D07-BFE8-D7C371DD1700}"
 	ProjectSection(SolutionItems) = preProject
 		fibonacci_port.fsx = fibonacci_port.fsx
@@ -10,6 +10,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Experiments", "Experiments"
 		priorityqueue_speed_test.fsx = priorityqueue_speed_test.fsx
 		weighted_graph.fsx = weighted_graph.fsx
 	EndProjectSection
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "prelude", "prelude\prelude.fsproj", "{8D93FCAF-EFD3-48C4-96CB-AE9DE845ADD6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

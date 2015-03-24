@@ -21,6 +21,14 @@ open System.Net
 open Prelude.SimpleGraphs
 open Prelude.StringMetrics
 
+Array.rot 1 [|1..3|] = [|3;1;2|]
+Array.rot 2 [|1..3|] = [|2;3;1|]
+Array.rot 3 [|1..3|] = [|1;2;3|]
+Array.rot 4 [|1..3|] = Array.rot 1 [|1..3|]  
+Array.rot -1 [|1..3|] = Array.rot 2 [|1..3|] 
+Array.rot -2 [|1..3|] = Array.rot 1 [|1..3|]
+Array.rot -3 [|1..3|] = Array.rot 3 [|1..3|] 
+Array.rot -4 [|1..3|] = Array.rot -1 [|1..3|] 
 /////////////
 splitSentenceManual "ye. water will be 4. dollars.I say\n yes Mr. fred it's .5 to U.C.L.A. and has a Ph.D. And this is a legit sentence too."
 //////////////////////
