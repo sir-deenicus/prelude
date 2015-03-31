@@ -37,11 +37,48 @@ splitSentenceManual "ye. water will be 4. dollars.I say\n yes Mr. fred it's .5 t
 ["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (UpperCase w) -> w)
 
 ///////////////////////
+
+
+waterfall {
+    let! z = Array.tryFind ((=) 2) [|3..5|]
+    let! y = Array.tryFind ((=) 1) [|3..5|]
+    return 7
+  }
+
+waterfall {
+    let! z = Array.tryFind ((=) 2) [|3..5|]
+    let! y = Array.tryFind ((=) 4) [|3..5|]
+    return 7
+  }
+
+waterfallOption {
+    let! z = Array.tryFind ((=) 2) [|3..5|]
+    let! y = Array.tryFind ((=) 1) [|3..5|]
+    return 7
+  }
+
+waterfallOption {
+    let! z = Array.tryFind ((=) 2) [|3..5|]
+    let! y = Array.tryFind ((=) 1) [|3..5|]
+    ()
+  }
+
+nestif {
+      let! _ = 2 < 10
+      let! _ = 5 < 10
+      printfn "good"
+   }
+
+nestif {
+      let! _ = 2 < 10
+      let! _ = 11 < 10
+      printfn "good"
+   }
    
-findIndexi true ((=) 'f') 4 "fright"
-findIndexi false ((=) 'f') 4 "fright"
-findIndexi false ((=) 'i') 4 "fright"
-findIndexi true ((=) 'i') 4 "fright"
+String.findIndexi true (currysnd ((=) 'f')) 4 "fright"
+String.findIndexi false (currysnd ((=) 'f')) 4 "fright"
+String.findIndexi false (currysnd ((=) 'i')) 4 "fright"
+String.findIndexi true (currysnd ((=) 'i')) 4 "fright"
 
 ////////////
 

@@ -347,7 +347,7 @@ let toBase b n =
 
 let readoutNum b = Array.map (fun (p,d) -> d * b ** p) 
  
-let baseNumToString (l:'a[]) lmap =
+let baseNumToString (l:_[]) lmap =
     [|for i in 0.0..(fst l.LastElement) do 
         yield 
          (match Map.tryFind i lmap with
@@ -365,13 +365,18 @@ let secondsToText = function
     | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
     | x -> (x |> round 2 |> string) + " seconds"
 
-let hoursToText = function
+let hoursToText h =
+ let (tunit,tvalue) = 
+  match h with
    | h when (h * 60.) < 1. -> "seconds", h / 3600. |> round 1
    | h when h < 1. -> "minutes", h * 60. |> round 1
    | h when h < 24. -> "hours", h |> round 1
    | h when h > 24. * 7. * 4. -> "months", round 2 (h/(24. * 7. * 4.))
    | h when h > 24. * 7. -> "weeks", round 2 (h/(24. * 7.))
    | h  -> "days", round 2 (h/24.)  
+ string tvalue + " " + tunit
+
+
 
 type DateTime with 
   member d.ToRoughDateString () = 

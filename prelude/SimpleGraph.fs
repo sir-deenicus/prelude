@@ -249,7 +249,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                     edges.[v] 
                     |> Seq.iter (fun (w_v2) ->                                           
                           if currentCut.Contains w_v2.Vert || currentCut.Contains v then   
-                            fs.Add (WeightPair(w_v2.Weight,v,w_v2.Vert)) 
+                            ignore <| fs.Add (WeightPair(w_v2.Weight,v,w_v2.Vert)) 
                             ())
 
                   if fs.Count = 0 then (currentCut |> Seq.head, i + 1, true)
@@ -258,15 +258,15 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                         let minel = fs.Min 
                         minel.VertX, minel.VertY, minel.Weight, minel
                           
-                    fs.Remove next     
+                    let _ = fs.Remove next     
 
                     if (currentCut.Contains v0 || currentCut.Contains v2 ) then 
                       let vin0 = tree.InsertVertex v0
                       let vin = tree.InsertVertex v2
                       let nedge = tree.InsertEdge (v0, v2)
                           
-                      currentCut.Remove v0 
-                      currentCut.Remove v2 
+                      let _ = currentCut.Remove v0 
+                      let _ = currentCut.Remove v2 
                       (v2, i + 1, true)
                     else (v, i + 1, false)) (root, 0, true)    
             tree                         
@@ -283,7 +283,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                          
      for v in vs do
        if v <> source then dists.Add(v, Double.MaxValue)
-       prev.Add(v, None) |> ignore
+       let _ = prev.Add(v, None) 
        let n = FibHeap.insert_data q v dists.[v]
        nodeMap.Add(v, n)
      
@@ -294,7 +294,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
         if next = target then true
         else 
           let adjs = g.GetEdges next
-          visited.Add next      
+          let _ = visited.Add next      
                 
           match adjs with 
             | None -> false

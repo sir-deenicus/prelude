@@ -15,47 +15,72 @@ type Hashset<'a> = System.Collections.Generic.HashSet<'a>
 
 ///A nested if builder is a maybe modified to work with raw conditional tests
 type NestedIfBuilder() =
-    member this.Bind(x, f) =
+    member __.Bind(x, f) =
        if x then f x
        else () 
-    member this.Delay(f) = f() 
-    member this.Zero () = ()
+    member __.Delay(f) = f() 
+    member __.Zero () = ()      
 
-let nestif = NestedIfBuilder()  
 
-type NestedIfElseBuilder() =
-    member this.Bind(x, f) =
+type NestedIfMaybeBuilder() =
+    member __.Bind(x, f) =
        if x then f x
        else None 
-    member this.Delay(f) = f()
-    member this.Return(x) = Some x
-    member this.ReturnFrom(x) = x 
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x 
 
-let nestifElse = NestedIfElseBuilder()
- 
+
 type ErrorBuilder() =
-    member this.Bind(x, f) =
+    member __.Bind(x, f) =
         try f (None,Some x)  
         with e -> f (Some e, None) 
 
-    member this.Delay(f) = f()
-    member this.Return(x) = x
-    member this.ReturnFrom(x) = x
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x
 
 type MaybeBuilder() =
-    member this.Bind(x, f) =
+    member __.Bind(x, f) =
         match x with
         | Some(x) -> f(x)
         | _ -> None
-    member this.Delay(f) = f()
-    member this.Return(x) = Some x
-    member this.ReturnFrom(x) = x
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x
+
+type WaterfallBuilder() =
+    member __.Bind(x, f) =
+        match x with
+        | Some(x) -> x
+        | _ -> f x
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x
+
+type WaterfallOptionBuilder() =
+    member __.Bind(x, f) =
+        match x with
+        | Some(x) as s -> s
+        | _ -> f x
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x
+    member __.Zero () = None
+
+let waterfall = WaterfallBuilder()
+
+let waterfallOption = WaterfallOptionBuilder()
 
 let maybe = MaybeBuilder()
 
 let error = ErrorBuilder()
 
-let silentFailComputation f x = try Some(f x) with e -> None
+let nestif = NestedIfBuilder()  
+
+let nestifMaybe = NestedIfMaybeBuilder()   
+
+let silentFailComputation f x = try Some(f x) with _ -> None
 
 let inline (|ToFloat|) x = float x 
 
@@ -192,45 +217,45 @@ let swapArr i j (arr:'a[]) =
 
 let inline swap (x,y) = (y,x)
 
-let inline fst3 (a,b,c) = a
+let inline fst3 (a,_,_) = a
 
-let inline fst4 (a,b,c,d) = a
+let inline fst4 (a,_,_,_) = a
 
-let inline fst5 (a,b,c,d,e) = a
+let inline fst5 (a, _, _, _, _) = a
  
 let inline snd3 (_,b,_) = b
 
-let inline snd4 (a,b,_,_) = b
+let inline snd4 (_,b,_,_) = b
 
-let inline snd5 (_,b,_,d,_) = b 
+let inline snd5 (_,b,_,_,_) = b 
 
-let inline third (a,b,c) = c
+let inline third (_,_,c) = c
 
 let inline third4 (_,_,c,_) = c
 
-let inline third5 (_,b,c,d,_) = c
+let inline third5 (_,_,c,_,_) = c
 
 let inline fourth (_,_,_,el) = el
 
 let inline fourth5 (_,_,_,d,_) = d
 
-let inline fifth (_,b,c,d,e) = e
+let inline fifth (_,_,_,_,e) = e
 
 let inline fifth7 (_,_,_,_,el,_,_) =  el
 
 let inline sixth7 (_,_,_,_,_,el,_) =  el
 
-let fst_fourth (a,b,c,d) = a,d
+let fst_fourth (a,_,_,d) = a,d
 
-let fst_third (a,b,c) = a,c
+let fst_third (a,_,c) = a,c
 
-let fst_snd (a,b,c) = a,b
+let fst_snd (a,b,_) = a,b
 
-let fst_snd5 (a,b,c,d,e) = a,b
+let fst_snd5 (a,b,_,_,_) = a,b
 
-let snd_third (a,b,c) = b,c 
+let snd_third (_,b,c) = b,c 
 
-let third_fourth (a,b,c,d) = c,d
+let third_fourth (_,_,c,d) = c,d
 
 //////////////////MAPS/////////////////////////////////
 
@@ -252,7 +277,7 @@ type Dictionary<'a,'b>  with
  // static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
   static member ofSeq values = Dict(values |> dict) 
 
-  member this.iter f = for (DictKV(k,v)) in this do f v
+  member this.iter f = for (DictKV(_,v)) in this do f v
   member this.getOrDef key def = 
      let found,v = this.TryGetValue key
      if found then v else def 
@@ -267,7 +292,7 @@ type Dictionary<'a,'b>  with
   member this.ExpandElseAdd key expand def =
      let found , v = this.TryGetValue key
      if found then
-        this.[key] <- expand (this.[key])
+        this.[key] <- expand (v)
      else
        this.Add(key,def) 
 
@@ -352,7 +377,7 @@ type Array with
             let modulo = ((i + places) % n)                          
             if i + places < 0 && modulo <> 0 then n + modulo else modulo)    
 
-  static member first def (a:'a[]) = if a.Length = 0 then def else a.[0]
+  static member firstOrZero def (a:'a[]) = if a.Length = 0 then def else a.[0]
   
   static member inline lift x = [|x|]
   static member pairNexts (a : 'a []) = [|for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1]|]
@@ -396,9 +421,7 @@ module Option =
  let mapNull f x = if x = null then None else Some (f x)
  let forAllNotEmpty f = function None -> false | Some x ->  f x
 
-module Array =
-    
-    let flattenGroupBy sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
+module Array =  
 
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
     let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
@@ -519,6 +542,8 @@ let removeExtraChars (charsToStrip:char Set) (s:string) =
 //-------------
 let newLine = Environment.NewLine
 
+let DocumentsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+
 let inline joinToStringWith sep (s:'a seq) = String.Join(sep, s)
 
 let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
@@ -602,7 +627,7 @@ let (|StrContains|_|) testString (str : string) =
 let (|StrContainsOneOf|_|) (testStrings : string[]) str = testStrings |> Array.tryFind (containedinStr str) 
       
 let (|StrContainsAll|_|) (testStrings : string[]) str = 
-    nestifElse {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
+    nestifMaybe {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
 
 let (|StrContainsRemove|_|) t (str : string) = 
    if str.Contains(t) then Some(str.Replace(t,"")) else None 
@@ -717,8 +742,9 @@ module String =
     let seperateStringByCaps (s:string) = 
      let outString = Text.StringBuilder()
      for c in s do
-       if Char.IsUpper c then outString.Append(' '); outString.Append(c)
-       else outString.Append c
+       ignore <| 
+         if Char.IsUpper c then ignore <| outString.Append(' '); outString.Append(c)
+         else outString.Append c
      outString.ToString() 
    
     let findIndexi isForwards f i s = 
@@ -771,6 +797,11 @@ type System.Collections.Generic.List<'a> with
    static member Length (glist : Collections.Generic.List<'a>) = glist.Count
 
 module Seq =
+
+  let flattenGroupBy sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
+  
+  let flattenGroupByWith f sq =  sq |> Seq.toArray |> Array.map (keepLeft f)
+
   let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float(f x))
 
   let inline sortByDescendingLinq f (sequence : 'a seq) = sequence.OrderByDescending (System.Func<_,_> f)
@@ -789,8 +820,7 @@ module Seq =
              incr c
              if filter i a  then yield a} 
 
-  let findIndexi cond (s:Collections.Generic.IEnumerable<'a>) =
-     let mutable c = 0 
+  let findIndexi cond (s:Collections.Generic.IEnumerable<'a>) =  
      let enum = s.GetEnumerator()
      recurse (fst) 
              (fun (_,i) ->  
@@ -854,8 +884,16 @@ let boolArrayToInt32 (b:bool[]) =
     Collections.BitArray(b).CopyTo(ints, 0)
     ints.[0]
 
+type DateTime with
+   member dt.StartOfWeek( startOfWeek ) =      
+        let _diff = dt.DayOfWeek - startOfWeek |> int |> float
+        let diff = if _diff < 0. then _diff + 7. else _diff   
+        dt.AddDays(-1. * diff).Date;
+
 module DateTime = 
   let ToLongDateShortTime (d:DateTime) = d.ToLongDateString () + ", " + d.ToShortTimeString()
+ 
+ 
   let StartOfWeek (startOfWeek:DayOfWeek) (dt:DateTime) =
     let diff = int(dt.DayOfWeek - startOfWeek)
     let wrap = if diff < 0 then 7 else 0
@@ -986,4 +1024,47 @@ let unshorten (shorturl:string) =
  
 /////////////////
 let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
-  
+
+
+type ConsoleInterface(fname, onData,onError) =   
+
+   let finfo = Diagnostics.ProcessStartInfo(fname , 
+                 RedirectStandardOutput = true , 
+                 CreateNoWindow = true         ,
+                 RedirectStandardError = true  ,
+                 RedirectStandardInput = true  ,
+                 UseShellExecute = false       ,
+                 WindowStyle = Diagnostics.ProcessWindowStyle.Hidden)  
+
+   let mutable exe = None
+
+   member __.Start(s:string) =
+     try
+      __.Close()
+      exe <- Some <| new Diagnostics.Process(StartInfo = finfo)
+      exe.Value.OutputDataReceived.Add onData
+      exe.Value.ErrorDataReceived.Add onError
+      ignore <| exe.Value.Start()
+      exe.Value.BeginOutputReadLine() 
+      exe.Value.StandardInput.WriteLine("")
+      exe.Value.StandardInput.WriteLine(s)
+     with _ -> exe <- None
+   
+   member __.Start() = __.Start ""  
+
+   member __.SendInput (str:string) =
+      match exe with 
+         | Some exec ->   
+           if exec.HasExited then __.Close(); __.Start str    
+           else exec.StandardInput.Flush()
+                exec .StandardInput.WriteLine (str)  
+         | _ -> ()
+
+   member __.Close () =
+     match exe with 
+      | None -> ()
+      | Some exec ->
+         exec.StandardInput.Close()
+         exec.Close()        
+         exec.Dispose()  
+         exe <- None  
