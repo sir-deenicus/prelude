@@ -421,8 +421,8 @@ module Option =
  let mapNull f x = if x = null then None else Some (f x)
  let forAllNotEmpty f = function None -> false | Some x ->  f x
 
-module Array =  
-
+module Array =      
+    let getFrom n (a:'a[]) = a.[n..]   
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
     let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
     let filterElseTake filter sortfunc min_n n (a:'a[]) = 
@@ -888,7 +888,16 @@ type DateTime with
    member dt.StartOfWeek( startOfWeek ) =      
         let _diff = dt.DayOfWeek - startOfWeek |> int |> float
         let diff = if _diff < 0. then _diff + 7. else _diff   
-        dt.AddDays(-1. * diff).Date;
+        dt.AddDays(-1. * diff).Date;       
+   
+   member d.ToRoughDateString () = 
+      let today = DateTime.Now.Date
+      let span = (d.Date - today).TotalDays 
+      if span = -1. then d.ToShortTimeString() + ", yesterday"  
+      elif d.Date = today then d.ToShortTimeString()
+      elif span = 1. then d.ToShortTimeString() + ", tomorrow"
+      elif span > 1. && d.Day <= 28 then sprintf "the %dth, in %d days" d.Day (round span |> int)
+      else d.ToShortTimeString() + ", " + d.ToLongDateString()
 
 module DateTime = 
   let ToLongDateShortTime (d:DateTime) = d.ToLongDateString () + ", " + d.ToShortTimeString()

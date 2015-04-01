@@ -37,6 +37,11 @@ splitSentenceManual "ye. water will be 4. dollars.I say\n yes Mr. fred it's .5 t
 ["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (UpperCase w) -> w)
 
 ///////////////////////
+exponentialAverage id 0.45  None [20. ; 10. ; 40. ; 10.; 15.; 20.; 500. ; 500.; 800.]
+
+[20. ; 10. ; 40. ; 10.; 15.; 20.; 500. ; 500.; 800.] |> List.fold (exponentialSmoothing id 0.3) 30. 
+
+///
 
 
 waterfall {

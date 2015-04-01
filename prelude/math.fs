@@ -108,6 +108,18 @@ let inline median (x: ^a [])=
     if iseven then float(med + medl) / 2.
     else float med 
 
+let inline exponentialAverage f alpha init (data : 'a seq) = 
+   let y1 = defaultArg init (data |> Seq.takeOrMax 5 |> Seq.averageBy f)
+   data |> Seq.fold (fun s_t x -> 
+                    let y = float (f x)
+                    alpha * y + (1. - alpha) * s_t) y1 
+
+let inline exponentialSmoothing f alpha eavg point =   
+   let y = float (f point)
+   alpha * y + (1. - alpha) * eavg
+
+
+
 //***************************PERMUTATIONS AND CHANCE******************//
 //let rec partitions = function                                     
 //  | 0 -> []
@@ -374,16 +386,4 @@ let hoursToText h =
    | h when h > 24. * 7. * 4. -> "months", round 2 (h/(24. * 7. * 4.))
    | h when h > 24. * 7. -> "weeks", round 2 (h/(24. * 7.))
    | h  -> "days", round 2 (h/24.)  
- string tvalue + " " + tunit
-
-
-
-type DateTime with 
-  member d.ToRoughDateString () = 
-   let today = DateTime.Now.Date
-   let span = (d.Date - today).TotalDays 
-   if DateTime.Now >= d then "now"
-   elif d.Date = today then d.ToShortTimeString()
-   elif span = 1. then d.ToShortTimeString() + ", tomorrow"
-   elif span > 1. && d.Day <= 28 then sprintf "the %dth, in %d days" d.Day (round 0 span |> int)
-   else d.ToShortTimeString() + ", " + d.ToLongDateString()
+ string tvalue + " " + tunit   
