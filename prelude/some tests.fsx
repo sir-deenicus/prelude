@@ -21,6 +21,13 @@ open System.Net
 open Prelude.SimpleGraphs
 open Prelude.StringMetrics
 
+
+Array.collapseCols 
+            [|[|"A"; "B"|]
+              [|"B"; "C"|]
+              [|"A" ; "C"|]|]  |> Array.map Seq.mode 
+
+
 let x = [|"a", 1; "b", 2|]
 let y = [|"a", 1; "b", 3|]
 

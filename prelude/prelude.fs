@@ -433,6 +433,14 @@ module Option =
 
 module Array =      
     let getFrom n (a:'a[]) = a.[n..]   
+
+    ///compresses a 2D array in form [][] into an array of lists with all rows now ocuppying a single list per column.
+    let collapseCols (data:'a[][]) = 
+      let outcol = Array.create data.[0].Length []
+      for c in 0..data.[0].Length - 1 do
+         for r in 0..data.Length - 1 do
+            outcol.[c] <- data.[r].[c]::outcol.[c]
+      outcol
     let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
     let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
     let filterElseTake filter sortfunc min_n n (a:'a[]) = 
