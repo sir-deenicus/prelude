@@ -21,6 +21,24 @@ open System.Net
 open Prelude.SimpleGraphs
 open Prelude.StringMetrics
 
+let x = [|"a", 1; "b", 2|]
+let y = [|"a", 1; "b", 3|]
+
+let _x = [|0, 1; 2, 2|]
+let _y = [|1, 1; 5, 3|]
+
+addInPlaceIntoFirstGen (fun (_,x) (l,y) -> l, x + y) x y  
+x = [|"a",2; "b",5|]
+addInPlaceIntoFirstGen addPairs _x _y
+_y
+_x
+
+let thevec = [|for i in 0..15 -> random.NextDouble(1.,20.)|]
+varianceAndMean thevec   
+                            
+let (v,m,n) = thevec |> Array.fold (fun (v,m,n) x -> online_variance_mean v m n x) (0.,0.,1.)
+v/(n-1.), m
+/////////////////////////
 Array.rot 1 [|1..3|] = [|3;1;2|]
 Array.rot 2 [|1..3|] = [|2;3;1|]
 Array.rot 3 [|1..3|] = [|1;2;3|]
@@ -42,7 +60,15 @@ exponentialAverage id 0.45  None [20. ; 10. ; 40. ; 10.; 15.; 20.; 500. ; 500.; 
 [20. ; 10. ; 40. ; 10.; 15.; 20.; 500. ; 500.; 800.] |> List.fold (exponentialSmoothing id 0.3) 30. 
 
 ///
+hoursToText 5.67
+hoursToText (25.02)
+hoursToText (2. * 168. + 24.)
+hoursToText 24.
 
+//////
+
+DateTime.Now.AddDays(-54.).StartOfMonth()
+                       
 
 waterfall {
     let! z = Array.tryFind ((=) 2) [|3..5|]

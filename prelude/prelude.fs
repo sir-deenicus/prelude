@@ -28,17 +28,17 @@ type NestedIfMaybeBuilder() =
        else None 
     member __.Delay(f) = f()
     member __.Return(x) = Some x
-    member __.ReturnFrom(x) = x 
-
+    member __.ReturnFrom(x) = x      
 
 type ErrorBuilder() =
-    member __.Bind(x, f) =
-        try f (None,Some x)  
+    member __.Bind(x:Lazy<'a>, f) =
+        try f (None,Some(x.Force()))  
         with e -> f (Some e, None) 
 
     member __.Delay(f) = f()
     member __.Return(x) = x
-    member __.ReturnFrom(x) = x
+    member __.ReturnFrom(x) = x 
+ 
 
 type MaybeBuilder() =
     member __.Bind(x, f) =
@@ -61,7 +61,7 @@ type WaterfallBuilder() =
 type WaterfallOptionBuilder() =
     member __.Bind(x, f) =
         match x with
-        | Some(x) as s -> s
+        | Some(_) as s -> s
         | _ -> f x
     member __.Delay(f) = f()
     member __.Return(x) = Some x
@@ -92,7 +92,17 @@ let inline (|ToStringArray|) d = d |> Array.map string
 
 let (|ToArray|) d = d |> Seq.toArray
 
-let inline isNumber n = Double.TryParse n |> fst 
+let inline isNumber n = Double.TryParse n |> fst        
+
+let (|ToDateTime|) d = DateTime.Parse d
+
+let (|IsDateTime|IsNumber|JustString|) d = 
+   let isn, n = Double.TryParse d
+   if isn then IsNumber n
+   else 
+    let p, dt = DateTime.TryParse d  
+    if p then IsDateTime dt 
+    else JustString d   
 
 let toDouble s = 
     maybe {  let b, v = Double.TryParse(s)
@@ -561,10 +571,10 @@ let inline trim (str: string) = str.Trim()
 let trimWith charsToTrim (s:string) = s.Trim(charsToTrim)
 
 ///charArr (s:string) = s.ToCharArray()
-let inline charArr (s:string) = s.ToCharArray()
+let inline char_array (s:string) = s.ToCharArray()
 
 ///s.ToCharArray() |> Array.map string 
-let inline charStr (s:string) = s.ToCharArray() |> Array.map string   
+let inline letters (s:string) = s.ToCharArray() |> Array.map string   
 
 let inline splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
 
@@ -811,6 +821,14 @@ module Seq =
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
   let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
+  
+  let splitSeqWith condition f seqs = 
+   seqs |> Seq.fold (fun ((current,all) as state) item ->
+        if condition (f item) then 
+          match current with 
+           | [] -> state
+           | cs -> [], (List.rev cs)::all
+         else item::current, all ) ([],[]) |> snd |> List.rev
 
   
   let filteri filter (vec:'a seq) = 
@@ -888,7 +906,9 @@ type DateTime with
    member dt.StartOfWeek( startOfWeek ) =      
         let _diff = dt.DayOfWeek - startOfWeek |> int |> float
         let diff = if _diff < 0. then _diff + 7. else _diff   
-        dt.AddDays(-1. * diff).Date;       
+        dt.AddDays(-1. * diff).Date; 
+        
+   member dt.StartOfMonth () = dt.AddDays(float -dt.Day + 1.).Date      
    
    member d.ToRoughDateString () = 
       let today = DateTime.Now.Date
@@ -1035,7 +1055,7 @@ let unshorten (shorturl:string) =
 let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
 
 
-type ConsoleInterface(fname, onData,onError) =   
+type ConsoleInterface(fname, onData,onError, ?args) =   
 
    let finfo = Diagnostics.ProcessStartInfo(fname , 
                  RedirectStandardOutput = true , 
@@ -1044,6 +1064,8 @@ type ConsoleInterface(fname, onData,onError) =
                  RedirectStandardInput = true  ,
                  UseShellExecute = false       ,
                  WindowStyle = Diagnostics.ProcessWindowStyle.Hidden)  
+
+   do match args with | None -> () | Some a -> finfo.Arguments <- a
 
    let mutable exe = None
 

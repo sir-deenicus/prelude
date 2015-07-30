@@ -71,8 +71,7 @@ let linearRegress a vec y = regressStream a id (-) vec y
 let logisticRegressAvg a vec y = regressAvgStream  a logistic (+) vec y
 
 ///weights, avgerageWeight (mean,n)
-let linearRegressAvg a vec y = regressAvgStream a id (-) vec y
-                                                       
+let linearRegressAvg a vec y = regressAvgStream a id (-) vec y                                          
  
 let inline iterateLearner nmax f (xs:_[]) (ys:_[]) = 
     let params0 = f xs.[0] ys.[0] None

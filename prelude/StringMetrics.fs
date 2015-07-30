@@ -46,7 +46,7 @@ let hammingpad (a:string) (b:string) =
     let diff = abs(a.Length - b.Length)
     let small, big = smaller a b
     let sp = small + String(' ', diff) 
-    hamming (charArr big) (charArr sp)
+    hamming (char_array big) (char_array sp)
 
 let damerauLevenshteinDistance (arr1:'a []) (arr2:'a []) =  
     let wrap j k = if j = k then arr2.Length else j - 1 - k 

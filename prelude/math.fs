@@ -18,6 +18,12 @@ let nearestPow2 x = let n = log2 x |> ceil in  2. ** n
 
 let inline isPowerOf2 (ToFloat x) = let y = log2 x in y - floor y = 0. 
 
+
+let inline addInPlaceIntoFirstGen operator (a1:'a []) (a2:'b[]) =
+    for i in 0..a1.Length - 1 do 
+       a1.[i] <- a1.[i] </operator/> a2.[i]
+
+
 let inline addInPlaceIntoFirst (a1:'a []) (a2:'a[]) =
     for i in 0..a1.Length - 1 do 
        a1.[i] <- a1.[i] + a2.[i]
@@ -250,6 +256,10 @@ let log10bucket n x_ =
  y' * (10. ** exponent) * (sign x_ |> float)
 
 //***************************Array Useful Vector Math******************//
+let inline normalizeInPlace data = 
+   let total = data |> Array.sum
+   data |> Array.iteri (fun i x -> data.[i] <- x/ total) 
+
 
 let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =  
   let den = numRows 
@@ -377,13 +387,24 @@ let secondsToText = function
     | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
     | x -> (x |> round 2 |> string) + " seconds"
 
-let hoursToText h =
- let (tunit,tvalue) = 
-  match h with
-   | h when (h * 60.) < 1. -> "seconds", h / 3600. |> round 1
-   | h when h < 1. -> "minutes", h * 60. |> round 1
-   | h when h < 24. -> "hours", h |> round 1
-   | h when h > 24. * 7. * 4. -> "months", round 2 (h/(24. * 7. * 4.))
-   | h when h > 24. * 7. -> "weeks", round 2 (h/(24. * 7.))
-   | h  -> "days", round 2 (h/24.)  
- string tvalue + " " + tunit   
+let inline numberAndDecimalParts x = floor x, x - floor x
+
+let inline private toparts unitLarger unitSmaller scalesmall txtlarge txtsmall =
+    string unitLarger + txtlarge + if unitSmaller = 0. then "" else ((unitSmaller * scalesmall) |> round 1 |> string) +  txtsmall
+
+let hoursToText = function
+   | h when (h * 60.) < 1. -> string(h / 3600. |> round 1) + " seconds"
+   | h when h < 1. -> string(h * 60. |> round 1) + " minutes"
+   | h when h < 24. ->  
+     let hrs,mins = numberAndDecimalParts h  
+     toparts hrs mins 60. " hours " " minutes"
+   | h when h > 24. * 7. * 4. -> 
+      let totmonths, weeks = numberAndDecimalParts(h/(24. * 7. * 4.))  
+      toparts totmonths weeks 4. " months " " weeks"
+   | h when h > 24. * 7. ->  
+      let totweeks, days = numberAndDecimalParts (h/(24. * 7.)) 
+      toparts totweeks days 7. " weeks " " days"
+   | h  -> 
+      let totdays, hrs = numberAndDecimalParts (h/24.)
+      toparts totdays hrs 24. " days " " hours"                                    
+        
