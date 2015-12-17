@@ -223,8 +223,6 @@ type randomInt (rNext, lower,upper) =
 
 //***************************ROUNDING******************//
 
-let inline round (places:int) (num: float) = Math.Round(num, places)
-
 let (|RoundTo|) n x = round n x 
 
 ///buckets rounds a number to roundTo places then buckets with bucketSize. where all numbers are floored to last 
@@ -368,6 +366,16 @@ let toBase b n =
    breaknum [] n |> List.toArray
 
 let readoutNum b = Array.map (fun (p,d) -> d * b ** p) 
+
+let baseNumToArray size (l:_[]) =
+    if l.Length = 0 then Array.zeroCreate size
+    else
+    let lmap = Map.ofArray l
+    [|for i in 0.0..float size-1. do 
+        yield 
+         (match Map.tryFind i lmap with
+          | None -> 0.
+          | Some d -> d)|] |> Array.rev  
  
 let baseNumToString (l:_[]) lmap =
     [|for i in 0.0..(fst l.LastElement) do 
@@ -378,33 +386,3 @@ let baseNumToString (l:_[]) lmap =
           | Some d when d < 36.-> string(char (d+55.))
           | Some d -> string d + "|" )|] |> Array.rev |> joinToString
 
-////////
-
-let secondsToText = function 
-    | 0. -> "Now"
-    | x when x > 60. && x < 3600. -> let m = (x / 60.) |> round 2 in string m + " minutes"
-    | x when x > 3600. && x <= 3600. * 24. -> ((x / 3600.) |> round 1 |> string) + " hours"
-    | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
-    | x -> (x |> round 2 |> string) + " seconds"
-
-let inline numberAndDecimalParts x = floor x, x - floor x
-
-let inline private toparts unitLarger unitSmaller scalesmall txtlarge txtsmall =
-    string unitLarger + txtlarge + if unitSmaller = 0. then "" else ((unitSmaller * scalesmall) |> round 1 |> string) +  txtsmall
-
-let hoursToText = function
-   | h when (h * 60.) < 1. -> string(h / 3600. |> round 1) + " seconds"
-   | h when h < 1. -> string(h * 60. |> round 1) + " minutes"
-   | h when h < 24. ->  
-     let hrs,mins = numberAndDecimalParts h  
-     toparts hrs mins 60. " hours " " minutes"
-   | h when h > 24. * 7. * 4. -> 
-      let totmonths, weeks = numberAndDecimalParts(h/(24. * 7. * 4.))  
-      toparts totmonths weeks 4. " months " " weeks"
-   | h when h > 24. * 7. ->  
-      let totweeks, days = numberAndDecimalParts (h/(24. * 7.)) 
-      toparts totweeks days 7. " weeks " " days"
-   | h  -> 
-      let totdays, hrs = numberAndDecimalParts (h/24.)
-      toparts totdays hrs 24. " days " " hours"                                    
-        

@@ -218,10 +218,11 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
          return elist }
 
     member x.Edges = 
-      Hashset(x.EdgeData
+      Hashset(
+         x.EdgeData
           |> Seq.collect (fun (DictKV(k,v)) -> 
-                                v |> Seq.map (fun (w_v2) -> lessToLeft(k, w_v2.Vert), w_v2.Weight) 
-                                  |> Seq.toArray) 
+               v |> Seq.map (fun (w_v2) -> lessToLeft(k, w_v2.Vert), w_v2.Weight) 
+                 |> Seq.toArray) 
           |> Seq.toArray) |> Seq.toArray
 
     member x.OrderedEdges =
@@ -234,11 +235,12 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                   sorted.Add (WeightPart(w_v2.Weight, lessToLeft(k, w_v2.Vert))) 
                   |> ignore  )) 
       sorted
-
-    member x.MinimumSpanningTree() = 
+    ///if do max=true it does maximum spanning tree instead
+    member x.MinimumSpanningTree(?domax) = 
+            let dir = if (defaultArg domax false) then -1. else 1.
             let currentCut = Hashset(edges.Keys)
             let root = currentCut |> Seq.head
-            let tree = FastGraphGeneric()
+            let tree = WeightedGraph()
             let fs = Collections.Generic.SortedSet() 
 
             let  _, _, steps =
@@ -248,13 +250,13 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                   if getnodes then                            
                     edges.[v] 
                     |> Seq.iter (fun (w_v2) ->                                           
-                          if currentCut.Contains w_v2.Vert || currentCut.Contains v then   
-                            ignore <| fs.Add (WeightPair(w_v2.Weight,v,w_v2.Vert)) 
-                            ())
+                        if currentCut.Contains w_v2.Vert || currentCut.Contains v then   
+                          ignore <| fs.Add (WeightPair(w_v2.Weight * dir,v,w_v2.Vert)) 
+                          ())
 
                   if fs.Count = 0 then (currentCut |> Seq.head, i + 1, true)
                   else 
-                    let v0,v2, _, next = 
+                    let v0,v2, w, next = 
                         let minel = fs.Min 
                         minel.VertX, minel.VertY, minel.Weight, minel
                           
@@ -263,7 +265,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
                     if (currentCut.Contains v0 || currentCut.Contains v2 ) then 
                       let vin0 = tree.InsertVertex v0
                       let vin = tree.InsertVertex v2
-                      let nedge = tree.InsertEdge (v0, v2)
+                      let nedge = tree.InsertEdge (v0, v2,w)
                           
                       let _ = currentCut.Remove v0 
                       let _ = currentCut.Remove v2 

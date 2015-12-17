@@ -433,6 +433,7 @@ module Option =
 
 module Array =      
     let getFrom n (a:'a[]) = a.[n..]   
+    let removeDuplicates s = s |> set |> Set.toArray
 
     ///compresses a 2D array in form [][] into an array of lists with all rows now ocuppying a single list per column.
     let collapseCols (data:'a[][]) = 
@@ -568,10 +569,8 @@ let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
 
 let inline joinToString s = joinToStringWith "" s
 
-///= [|'.' ; ' '; ',' ; '\t'; '?'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; Environment.NewLine; '—'; '<'; '>';'[';']';'“'|]
-let splitChars = [|'.' ; ' '; ',' ; '\t'; '?'; '\"'; ':' ; ';' ; '!' ; '#'; '|';  '\010'; '/'; '\\' ; '\'' ; '(' ; ')'; '\000'; '\n'; '—'; '<'; '>';'[';']';'“'|]
-
-let superflouschars = [|' '; ','; '.'; '\"' ; '?';'!'; ';'; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”';'\013'; '{';'}'; '['; ']'; '\010' ; '\000'|]
+///=  [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
+let splitterchars =  [|' '; ',' ; '\t'; '?'; ':' ;'–'; ';' ; '!' ; '|';  '\010';  '\\' ; '\"' ; '(' ; ')'; '\000'; '\r'; '\n'; '—';'[';']';'“';'”'|]
 
 let inline trim (str: string) = str.Trim()
 
@@ -581,28 +580,18 @@ let trimWith charsToTrim (s:string) = s.Trim(charsToTrim)
 ///charArr (s:string) = s.ToCharArray()
 let inline char_array (s:string) = s.ToCharArray()
 
-///s.ToCharArray() |> Array.map string 
-let inline letters (s:string) = s.ToCharArray() |> Array.map string   
-
 let inline splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
 
 let inline splitstrWithSpace (str : string) = str.Split([|" "|], StringSplitOptions.RemoveEmptyEntries) 
 
 let inline splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, @"(?<=(?<![\d.\d])[\n.?!])")
 
-let slpitStrs = [|"." ; " "; "," ; "\t"; "?"; ":" ; ";" ; "!" ; "#"; "|";  "\010"; "/"; "\\" ; "\"" ; "(" ; ")"; "\000"; Environment.NewLine; "—"; "<"; ">";"[";"]";"“"|]
+let slpitStrs = [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
  
-let seplist andor (ws : string[]) = 
-   match ws.Length with
-   | 1 ->  ws.[0]
-   | 0 -> ""
-   | _ -> let p1 = ws.[..ws.Length - 2] |> joinToStringWith ", " 
-          p1 + " " + andor + " " + ws.LastElement
-
-///splits to words using the following characters: \s \t . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
+///Note...does not split periods. Splits to words using the following characters: [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
 let splitToWords = splitstr slpitStrs
-///Like regular splitToWords but uses a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
-let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;!#\|\010/\\""()\000\n—\[\]“\>\<]") |> Array.filterMap ((<>) "") (trimWith superflouschars)
+///Like regular splitToWords but eliminates periods while using a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
+let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;–!#\|\010/\\""()\000\n—\[\]“\>\<”]") |> Array.filterMap ((<>) "") (trimWith splitterchars)
 
 let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
 
@@ -667,20 +656,23 @@ let splitSentenceManual (s:string) =
    let sb = Text.StringBuilder()
    let slist = MutableList()
    let strmax = s.Length - 1
-
-   for n in 0..strmax do  
-      let c = s.[n]
+   let strmaxless1 = strmax - 1
+  
+   for n in 0..strmax do 
+      let c = s.[n]                                                
       if c = '?' || c = '!'  || c = '\n' 
-                 || (c = '\r' && n < strmax && s.[n + 1] <> '\n') 
+                 || (c = '\r' && n < strmax && s.[n + 1] <> '\n')   
                  || (c = '.' && n > 0 
-                             && not (Char.IsDigit s.[n - 1]) 
-                             && (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
-                             && n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
-                                      && not(s.[n-2] = 'w' && s.[n-1] = 'w')
-                             && n < strmax - 1 && s.[n+2] <> '.'
-                             && n < strmax - 2 && not(s.[n+3] = 'f' && s.[n+2] = 'd'&& s.[n+1] = 'p') 
-                                               && not(s.[n+3] = 'm' && s.[n+2] = 't' && s.[n+1] = 'h')
-                            )
+                             && not (Char.IsDigit s.[n - 1])    
+                             && not (Char.IsUpper c && s.[n-1] = ' ')                               
+                             && n > 1  
+                             && n < strmax            
+                             && not (Char.IsDigit s.[n+1])        
+                             && (not (Char.IsLetterOrDigit s.[n+1]) || Char.IsUpper s.[n+1])
+                             && n < strmaxless1 //2 before the end 
+                             && (not(Char.IsUpper s.[n-2]) || Char.IsUpper(s.[n+2]))
+                             && (s.[n-2] <> '.' ) //can only look 2 back for a period if next is not capitalized. actually strike that. consider names...hope no one ends sentences with initials
+                             && s.[n+2] <> '.' )
          then 
          if not(c = '\r' || c = '\n') then sb.Append c |> ignore
          if sb.Length > 0 then slist.Add(sb.ToString())
@@ -689,8 +681,9 @@ let splitSentenceManual (s:string) =
       else   
          sb.Append c |> ignore 
 
-   slist.Add(sb.ToString())
-   slist.ToArray()
+   if sb.Length > 0 then slist.Add(sb.ToString())
+   slist.ToArray()  
+    
 
 type String with
    member t.splitbystr ([<ParamArray>] splitbys : string[]) = splitstr splitbys t
@@ -701,10 +694,22 @@ type String with
 
 module String =  
     let removeSymbols s = s |> Seq.filter (Char.IsSymbol >> not) |> joinToString
- 
+
+    ///s.ToCharArray() |> Array.map string 
+    let inline letters (s:string) = s.ToCharArray() |> Array.map string   
+
+    //e.g. ["a";"b";"c"] -> "a,b and c"
+    let joinwithCommaThenAnd andor (ws : string[]) = 
+      match ws.Length with
+      | 1 ->  ws.[0]
+      | 0 -> ""
+      | _ -> let p1 = ws.[..ws.Length - 2] |> joinToStringWith ", " 
+             p1 + " " + andor + " " + ws.LastElement
+
+    
     let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
   
-    let normalizeCapitilization (s:string) = string s + tolower(s.[1..])
+    let normalizeCapitilization (s:string) =  s |> String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
 
     let suffix n (s:string) = s.[max 0 (s.Length - n)..] 
   
@@ -716,6 +721,9 @@ module String =
 
     let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
   
+    let replaceRegEx (patternstring:string) (replacestring:string) (inputstring:string) = 
+        Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring)  
+
     let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
         Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
 
@@ -777,6 +785,7 @@ module String =
                       (false, i, None)  
                       |> third  
 
+let pathCombine path1 path2 = IO.Path.Combine(path1, path2)
 ///very simple heuristic
 let splitToParagraphs singlebreak (s:string) = if singlebreak then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
 
@@ -939,7 +948,9 @@ module DateTime =
     
 let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1).ToUniversalTime()).TotalSeconds 
 
-let fromUnixTime timestamp = DateTime(1970,1,1,0,0,0,0).AddSeconds(timestamp)
+let fromUnixTime timestamp = DateTime(1970,1,1,0,0,0,0).AddSeconds( timestamp)
+
+let inline fromUnixTimeMilli timestamp = try DateTime(1970,1,1,0,0,0,0).AddSeconds(float timestamp / 1000.) with _ -> DateTime.MaxValue
 
 let fromUnixTimeMicroSec timestamp = DateTime(1970,1,1,0,0,0,0).AddMilliseconds(timestamp/1000.)
 
@@ -1061,7 +1072,55 @@ let unshorten (shorturl:string) =
  
 /////////////////
 let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
+////////
+let inline round (places:int) (num: float) = Math.Round(num, places)
 
+let secondsToText = function 
+    | 0. -> "Now"
+    | x when x > 60. && x < 3600. -> let m = (x / 60.) |> round 2 in string m + " minutes"
+    | x when x > 3600. && x <= 3600. * 24. -> ((x / 3600.) |> round 1 |> string) + " hours"
+    | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
+    | x -> (x |> round 2 |> string) + " seconds"
+
+let inline numberAndDecimalParts x = floor x, x - floor x
+
+let inline private toparts unitLarger unitSmaller scalesmall txtlarge txtsmall =
+    string unitLarger + txtlarge + if unitSmaller = 0. then "" else ((unitSmaller * scalesmall) |> round 1 |> string) +  txtsmall
+
+let hoursToText = function
+   | h when h < 0. -> "Not yet"
+   | h when (h * 60.) < 1. -> string(h / 3600. |> round 1) + " seconds"
+   | h when h < 1. -> string(h * 60. |> round 1) + " minutes"
+   | h when h < 24. ->  
+     let hrs,mins = numberAndDecimalParts h  
+     toparts hrs mins 60. " hours " " minutes"
+   | h when h > 24. * 7. * 52. -> 
+      let totyears, months = numberAndDecimalParts(h/(24. * 7. * 52.))  
+      toparts totyears months 4. " years " " months"
+   | h when h > 24. * 7. * 4. -> 
+      let totmonths, weeks = numberAndDecimalParts(h/(24. * 7. * 4.))  
+      toparts totmonths weeks 4. " months " " weeks"
+   | h when h > 24. * 7. ->  
+      let totweeks, days = numberAndDecimalParts (h/(24. * 7.)) 
+      toparts totweeks days 7. " weeks " " days"
+   | h  -> 
+      let totdays, hrs = numberAndDecimalParts (h/24.)
+      toparts totdays hrs 24. " days " " hours"                                    
+                                    
+        
+//////////////
+
+let time_this n empty timeform f = 
+   let timer = Diagnostics.Stopwatch() 
+   let _,ts, y =
+      recurse (fst3 >> (=) 0)
+           (fun (n, ts, x) ->
+             timer.Restart()
+             let x' = f ()
+             timer.Stop()
+             (n-1,timeform timer.Elapsed::ts, x')) (n,[],empty)
+   ts, y
+///////////////////
 
 type ConsoleInterface(fname, onData,onError, ?args) =   
 

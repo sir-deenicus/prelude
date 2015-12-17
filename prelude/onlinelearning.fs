@@ -36,27 +36,38 @@ let regressAvgStream alpha h op (xs : float []) (y:float) weightXavgWeigths =
         let m, c = avgws.[j]
         avgws.[j] <- online_mean m c ws.[j]            
     (ws,avgws)
+
+type AvgPerceptronState = {
+   mutable C:float;
+   mutable Bias : float;
+   mutable ß : float
+   Weights : float []
+   CachedWeights : float  []
+}
             
 ///params = (weight,cachedAvgWeigths, c, bias, beta)
-let averagedPerceptronStep alpha (vec : float []) (y:float) parameters =
-    let ws,cachedws, c, b,ß = defaultArg parameters 
-                                      (Array.init vec.Length (fun _ -> random.NextDouble() + 0.0001) 
-                                       , Array.init vec.Length (fun _ -> 0.)
-                                       , 0.,0.,1.)
+let averagedPerceptronStep _ (vec : float []) (y:float) parameters =
+    let param = defaultArg parameters 
+                              {Weights = Array.init vec.Length (fun _ -> random.NextDouble() + 0.0001) ;
+                               CachedWeights = Array.init vec.Length (fun _ -> 0.) ;
+                               C = 0.
+                               Bias = 0.
+                               ß = 1.}
 
-    let p = ((Array.dotproduct vec ws) + b) * y
-    let b', ß' = 
-     if p <= 0. then 
-        for j in 0..(ws.Length - 1) do 
-            ws.[j] <- ws.[j] + (y * vec.[j]) 
-            cachedws.[j] <- cachedws.[j] + (y * c * vec.[j])
-        b + y, ß + y * c
-     else b, ß
-                        
-    ws, cachedws,c + 1., b',ß' 
+    let p = ((Array.dotproduct vec param.Weights) + param.Bias) * y
+
+    if p <= 0. then 
+      for j in 0..(param.Weights.Length - 1) do 
+         param.Weights.[j] <- param.Weights.[j] + (y * vec.[j]) 
+         param.CachedWeights.[j] <- param.CachedWeights.[j] + (y * param.C * vec.[j])
+
+      param.Bias <- param.Bias + y
+      param.ß <- param.ß + y * param.C   
+
+    param.C <- param.C + 1.                
      
-let extractAveragedPerceptron (weights, cachedweights, c:float, b, beta) = 
-      Array.map2 (fun w u -> w - u/c) weights cachedweights, b - beta/c      
+let extractAveragedPerceptron parameters = 
+      Array.map2 (fun w u -> w - u/parameters.C) parameters.Weights parameters.CachedWeights, parameters.Bias - parameters.ß/parameters.C     
       
       
 let perceptronClassify b weight x = sign(Array.dotproduct weight x + b)
@@ -68,7 +79,7 @@ let logisticRegress a vec y = regressStream a logistic (+) vec y
 let linearRegress a vec y = regressStream a id (-) vec y
 
 ///weights, avgerageWeight (mean,n)
-let logisticRegressAvg a vec y = regressAvgStream  a logistic (+) vec y
+let logisticRegressAvg a vec y = regressAvgStream a logistic (+) vec y
 
 ///weights, avgerageWeight (mean,n)
 let linearRegressAvg a vec y = regressAvgStream a id (-) vec y                                          
@@ -164,3 +175,19 @@ let buildDistTable f dist (v1:'a[]) (v2:'a[]) =
             [|for j in 0..v2.Length - 1 ->
               (f v1.[i]), (f v2.[j]), dist (f v1.[i]) (f v2.[j])|])
 
+
+let pegasosInitVec λ size = Array.init size (fun _ -> random.NextDouble()) |> Array.to_unitvector |> Array.map ((*) (1./sqrt λ))
+
+///labels must be in {-1,1}
+let pegasosOnlineSVM_Step step λ (w:float[]) (x:float[]) y =
+       let check = y * Array.dotproduct w x
+
+       let η = 1. / (λ * step)  
+       let w_halfstep = Array.map ((*) (1. - η * λ)) w
+       if check < 1. then  //wrong
+         let scalex = Array.map ((*) y) x   
+         for i in 0..w.Length - 1 do
+            w_halfstep.[i] <- w_halfstep.[i] + η * scalex.[i]
+             
+       let scale = min 1. ((1./sqrt λ)/ Array.magnitude w_halfstep)
+       Array.map ((*) scale) w_halfstep
