@@ -99,7 +99,7 @@ let varianceFromMean mean = function
     | x when x = Seq.empty  -> 0.0 
     | l -> (Seq.sumBy (fun x -> (x - mean) ** 2.) l)/ (float (Seq.length l))    
                
-let stddev data = varianceAndMean data |> snd |> sqrt
+let stddev data = varianceAndMean data |> fst |> sqrt
 
 /// O(n log n) median returns if of even length, returns middle and penmiddelate objects
 let inline medianGen (x: 'a [])= 
