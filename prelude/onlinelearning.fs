@@ -21,7 +21,7 @@ let regressStream alpha h op (xs : float []) (y:float) ws_ =
     let e = h(Array.dotproduct xs ws) - y  
     for j in 0..(ws.Length - 1) do 
         ws.[j] <- op ws.[j] (alpha * e * xs.[j])   
-    ws
+    ws,e
 
 ///weights, avgerageWeight (mean,n)
 let regressAvgStream alpha h op (xs : float []) (y:float) weightXavgWeigths =
@@ -35,7 +35,7 @@ let regressAvgStream alpha h op (xs : float []) (y:float) weightXavgWeigths =
         ws.[j] <- op ws.[j] (alpha * e * xs.[j])  
         let m, c = avgws.[j]
         avgws.[j] <- online_mean m c ws.[j]            
-    (ws,avgws)
+    (ws,avgws),e
 
 type AvgPerceptronState = {
    mutable C:float;
@@ -46,7 +46,7 @@ type AvgPerceptronState = {
 }
             
 ///params = (weight,cachedAvgWeigths, c, bias, beta)
-let averagedPerceptronStep _ (vec : float []) (y:float) parameters =
+let averagedPerceptronStep (vec : float []) (y:float) parameters =
     let param = defaultArg parameters 
                               {Weights = Array.init vec.Length (fun _ -> random.NextDouble() + 0.0001) ;
                                CachedWeights = Array.init vec.Length (fun _ -> 0.) ;
@@ -64,13 +64,14 @@ let averagedPerceptronStep _ (vec : float []) (y:float) parameters =
       param.Bias <- param.Bias + y
       param.ß <- param.ß + y * param.C   
 
-    param.C <- param.C + 1.                
+    param.C <- param.C + 1.
+    param,p               
      
 let extractAveragedPerceptron parameters = 
       Array.map2 (fun w u -> w - u/parameters.C) parameters.Weights parameters.CachedWeights, parameters.Bias - parameters.ß/parameters.C     
       
       
-let perceptronClassify b weight x = sign(Array.dotproduct weight x + b)
+let perceptronClassify (weight,b) x = sign(Array.dotproduct weight x + b)
                                         
 
 let logisticRegress a vec y = regressStream a logistic (+) vec y
@@ -84,17 +85,18 @@ let logisticRegressAvg a vec y = regressAvgStream a logistic (+) vec y
 ///weights, avgerageWeight (mean,n)
 let linearRegressAvg a vec y = regressAvgStream a id (-) vec y                                          
  
-let inline iterateLearner nmax f (xs:_[]) (ys:_[]) = 
+let inline iterateLearner nmax getWeight f (xs:_[]) (ys:_[]) = 
     let params0 = f xs.[0] ys.[0] None
-    let indices = [|0..xs.Length-1|]
+    let indices = [|1..xs.Length-1|]
     recurse (fst >> (<=) nmax) 
             (fun (n, oldParams) ->
                 indices.permuteYates ()
                 n + 1
                  , indices 
                    |> Array.fold (fun newparams i ->   
-                        f xs.[i] ys.[i] (Some newparams)) oldParams  
+                        f xs.[i] ys.[i] (Some (getWeight newparams))) oldParams  
             ) (0,params0) 
+
 
 ////////////////
 
@@ -104,7 +106,7 @@ let inline linearPredict w x = Array.dotproduct w x
 let logisticProbability w x = 1./(1.+ exp(Array.dotproduct x w)) 
 
 
-let logisticClassify x w = 
+let logisticClassify w x = 
     let cl = 1./(1.+ exp(Array.dotproduct x w))
     if cl > 0.5 then 1. else 0.
 
@@ -179,7 +181,8 @@ let buildDistTable f dist (v1:'a[]) (v2:'a[]) =
 let pegasosInitVec λ size = Array.init size (fun _ -> random.NextDouble()) |> Array.to_unitvector |> Array.map ((*) (1./sqrt λ))
 
 ///labels must be in {-1,1}
-let pegasosOnlineSVM_Step step λ (w:float[]) (x:float[]) y =
+let pegasosOnlineSVM_Step λ (x:float[]) y weightsXstep =
+       let w,step = defaultArg weightsXstep (pegasosInitVec λ x.Length,1.)
        let check = y * Array.dotproduct w x
 
        let η = 1. / (λ * step)  
@@ -190,4 +193,5 @@ let pegasosOnlineSVM_Step step λ (w:float[]) (x:float[]) y =
             w_halfstep.[i] <- w_halfstep.[i] + η * scalex.[i]
              
        let scale = min 1. ((1./sqrt λ)/ Array.magnitude w_halfstep)
-       Array.map ((*) scale) w_halfstep
+       (Array.map ((*) scale) w_halfstep, step + 1.), check
+

@@ -1120,6 +1120,17 @@ let time_this n empty timeform f =
              timer.Stop()
              (n-1,timeform timer.Elapsed::ts, x')) (n,[],empty)
    ts, y
+
+let time_this2 n timeform f = 
+   let timer = Diagnostics.Stopwatch() 
+   let _,ts, y =
+      recurse (fst3 >> (=) 0)
+           (fun (n, ts, x) ->
+             timer.Restart()
+             let x' = f ()
+             timer.Stop()
+             (n-1,timeform timer.Elapsed::ts, x'::x)) (n,[],[])
+   ts, y
 ///////////////////
 
 type ConsoleInterface(fname, onData,onError, ?args) =   

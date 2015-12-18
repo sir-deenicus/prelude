@@ -64,6 +64,7 @@
     <Compile Include="FibonacciHeap.fs" />
     <Compile Include="SimpleGraph.fs" />
     <None Include="some tests.fsx" />
+    <None Include="learning_tests.fsx" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core, Version=$(TargetFSharpCoreVersion), Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
