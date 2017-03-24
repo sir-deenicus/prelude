@@ -159,6 +159,28 @@ type WeightPair<'a when 'a: comparison> =
 
 //===================================================
 
+let rec dispTreeGeneric d maxDepth (fg:FastStringGraph) (visited:Set<string>) dashes spaces node = 
+    match (fg.GetEdges node, maxDepth) with 
+      | None, _ -> node
+      | _, Some n when d >= n -> node
+      | Some edges, _ ->        
+         let children = 
+                edges
+                |> Array.filterMap 
+                    (visited.Contains >> not) 
+                    (fun e -> 
+                       spaces + "|" 
+                              + (dispTreeGeneric (d+1) maxDepth fg
+                                  (visited.Add node) 
+                                  (dashes + "-") 
+                                  (spaces + "|  ") 
+                                  e))
+
+         dashes + node + "\n" + (children |> joinToStringWith newLine) 
+
+///renders a graph that is a tree as a string.
+let dispStringTree d maxDepth g node = dispTreeGeneric d maxDepth g Set.empty "-" " " node
+
 [<Struct;CustomComparison;CustomEquality>]                              
 type WeightPart<'a when 'a: comparison> = 
   val Weight : float; val Vert : 'a       
@@ -179,10 +201,13 @@ type WeightPart<'a when 'a: comparison> =
 
 //===================================================
 
-type WeightedGraph<'a when 'a: equality and 'a:comparison>() = 
-    let edges = Dict<'a, Hashset<WeightPart<'a>>>() 
+type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) = 
+    let mutable edges = Dict<'a, Hashset<WeightPart<'a>>>() 
+    let mutable edgeWeights = Dict<struct('a * 'a), float>(HashIdentity.Structural)    
+    let track_weights = defaultArg trackweights false
     
     member x.EdgeData = edges 
+    member x.InsertRange es = edges.Clear(); edges <- es
     member x.InsertVertex(s:'a) =  
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s,Hashset()) 
@@ -202,10 +227,32 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
 
         let added1 = elist0.Add (WeightPart(w, v1))
         let added2 = elist1.Add (WeightPart(w, v0))
-       
+        let x,y = lessToLeft (v0,v1)
+        let _ = if track_weights then ignore <| edgeWeights.Add(struct(x,y), w) else ()
         return (added1,added2)}  
 
     member x.ContainsVertex v = edges.ContainsKey v 
+    
+    member x.AdjustWeight f v1 v2 = 
+        maybe {
+        let! elist0 = edges.tryFind v1 
+        let! {Weight = w} as v' = Seq.tryFind (fun (wv:WeightPart<_>) -> wv.Vert = v2) elist0
+
+        let elist1 = edges.[v2]
+
+        elist0.Remove(v') 
+        let adj1 = elist0.Add(WeightPart(f w,v2))
+        
+        elist1.Remove(WeightPart(w,v1))
+        let adj2 = elist1.Add(WeightPart(f w,v1))
+       
+        return (adj1,adj2)}  
+
+    member x.GetEdgeWeight v1 v2 = 
+        maybe {
+        let! elist0 = edges.tryFind v1 
+        let! {Weight = w} as v' = Seq.tryFind (fun (wv:WeightPart<_>) -> wv.Vert = v2) elist0 
+        return w} 
 
     member x.ContainsEdge v1 v2 = 
         maybe {
@@ -274,8 +321,53 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
             tree                         
   
     member x.Vertices = Hashset(edges.Keys)  
-
-    member g.dijkstra source target = 
+    
+    member g.dijkstra_full one source = 
+     let dists = Dict.ofSeq [source, 0.] 
+     let prev = Dict()
+     let vs = g.Vertices
+     let q = FibHeap.create ()
+     let visited = Hashset()
+     let nodeMap = Dict()
+                         
+     for v in vs do
+       if v <> source then dists.Add(v, Double.MaxValue)
+       let _ = prev.Add(v, None) 
+       let n = FibHeap.insert_data q v dists.[v]
+       nodeMap.Add(v, n)
+     
+     recurse 
+      (fun stop -> stop || FibHeap.size q <= 0)
+      (fun _ -> 
+        let next = FibHeap.extract_min_data q   
+         
+        let adjs = g.GetEdges next
+        let _ = visited.Add next      
+                
+        match adjs with 
+          | None -> false
+          | Some vs ->  
+            vs |> Seq.iter (fun v2 -> 
+              if not (visited.Contains v2.Vert) then
+                let alt = dists.[next] + v2.Weight * one                              
+                if alt < dists.[v2.Vert] then 
+                  dists.[v2.Vert] <- alt
+                  prev.[v2.Vert] <- Some next
+                  FibHeap.decrease_key q nodeMap.[v2.Vert] alt)
+            false) (false) |> ignore
+     dists, prev 
+    
+    member g.shortest_dists (dists:Dict<_,_>) (prev : Dict<_,_>) target =
+        recurse (fst >> Option.isNone)
+                (fun (Some p,l) -> prev.getOrDefault None p, (p,dists.[p])::l) 
+                (Some target, [])  
+    
+    member g.shortest_path (prev : Dict<_,_>) target =
+        recurse (fst >> Option.isNone)
+                (fun (Some p,l) -> prev.getOrDefault None p, p::l) 
+                (Some target, [])  
+                      
+    member g.dijkstra one source target = 
      let dists = Dict.ofSeq [source, 0.] 
      let prev = Dict()
      let vs = g.Vertices
@@ -303,7 +395,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
             | Some vs ->  
               vs |> Seq.iter (fun v2 -> 
                 if not (visited.Contains v2.Vert) then
-                  let alt = dists.[next] + v2.Weight                              
+                  let alt = dists.[next] + v2.Weight * one                              
                   if alt < dists.[v2.Vert] then 
                     dists.[v2.Vert] <- alt
                     prev.[v2.Vert] <- Some next
@@ -311,5 +403,5 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>() =
               false) (false) |> ignore  
       
      recurse (fst >> Option.isNone)
-             (fun (Some p,l) -> prev.getOrDef p None, p::l) 
+             (fun (Some p,l) -> prev.getOrDefault None p, p::l) 
              (Some target, [])  

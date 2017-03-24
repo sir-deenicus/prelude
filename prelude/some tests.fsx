@@ -21,6 +21,27 @@ open System.Net
 open Prelude.SimpleGraphs
 open Prelude.StringMetrics
 
+(*
+let commaNumber (ToString str) = 
+    let num,s = if str.[0] = '-' then str.[1..],"-" else str,""
+    let decimpoint = let i = num.IndexOf(".") in if i = -1 then num.Length else i
+    let npart , decimalpart = num.[..decimpoint-1], (num.[decimpoint..] )
+
+    let num' = Seq.chunkBySize 3 (Seq.rev npart) |> Seq.map (Array.rev >> joinToString) |> Seq.rev |> joinToStringWith ","
+    s + num' + (joinToString decimalpart)
+
+*)
+
+let dat = [2.,6.; 3.,8. ;12.,9.;5.,2.;16.,2.] 
+
+dat |> List.fold online_covariance (0.,0.,0.,0.) 
+
+dat |> List.unzip ||> simpleStats
+
+dat |> List.map fst |> varianceAndMean 
+dat |> List.averageBy snd
+
+
 
 Array.collapseCols 
             [|[|"A"; "B"|]
@@ -78,26 +99,26 @@ DateTime.Now.AddDays(-54.).StartOfMonth()
                        
 
 waterfall {
-    let! z = Array.tryFind ((=) 2) [|3..5|]
-    let! y = Array.tryFind ((=) 1) [|3..5|]
+    let! _ = Array.tryFind ((=) 2) [|3..5|]
+    let! _ = Array.tryFind ((=) 1) [|3..5|]
     return 7
   }
 
 waterfall {
-    let! z = Array.tryFind ((=) 2) [|3..5|]
-    let! y = Array.tryFind ((=) 4) [|3..5|]
+    let! _ = Array.tryFind ((=) 2) [|3..5|]
+    let! _ = Array.tryFind ((=) 4) [|3..5|]
     return 7
   }
 
 waterfallOption {
-    let! z = Array.tryFind ((=) 2) [|3..5|]
-    let! y = Array.tryFind ((=) 1) [|3..5|]
-    return 7
+    let! _ = Array.tryFind ((=) 2) [|3..5|]
+    let! _ = Array.tryFind ((=) 1) [|3..5|]
+    return 0
   }
 
 waterfallOption {
-    let! z = Array.tryFind ((=) 2) [|3..5|]
-    let! y = Array.tryFind ((=) 1) [|3..5|]
+    let! _ = Array.tryFind ((=) 2) [|3..5|]
+    let! _ = Array.tryFind ((=) 1) [|3..5|]
     ()
   }
 
@@ -107,11 +128,42 @@ nestif {
       printfn "good"
    }
 
+nestifMaybe {
+      let! _ = 2 < 10
+      let! _ = 5 < 10
+      return true
+   }
+
+nestifMaybe {
+      let! _ = 2 < 10
+      let! _ = 15 < 10
+      return true
+   }
+
 nestif {
       let! _ = 2 < 10
       let! _ = 11 < 10
       printfn "good"
    }
+
+errorFall {
+   let! e, b = lazy(IO.File.ReadAllBytes <| combinePaths [__SOURCE_DIRECTORY__; "prelude"; "prelude.fs"])
+   let! e2, b2 = lazy(IO.File.ReadAllBytes "none") 
+   return e,b2
+ }
+
+errorFall {
+   let! e2, b2 = lazy(IO.File.ReadAllBytes "none")
+   let! e, b = lazy(IO.File.ReadAllBytes <| combinePaths [__SOURCE_DIRECTORY__; "prelude"; "prelude.fs"]) 
+   return e,b2
+ }
+
+errorFall {
+   let! e2, b2 = lazy(IO.File.ReadAllBytes "none")                                                         
+   return e2,b2
+ }
+
+
    
 String.findIndexi true (currysnd ((=) 'f')) 4 "fright"
 String.findIndexi false (currysnd ((=) 'f')) 4 "fright"
@@ -157,6 +209,17 @@ fg.GetEdges "b"
 fg.GetEdges "c"
 fg.GetEdges "d"
 
+let wg = WeightedGraph<string>()
+
+wg.InsertVertex("a")
+wg.InsertVertex("b")
+wg.InsertVertex("c")
+wg.InsertEdge("a","b", 2.)
+wg.InsertEdge("c","b", 2.)
+
+wg.AdjustWeight ((+) 1.) "a" "b"
+
+wg
 ////
 
 

@@ -58,6 +58,7 @@
     <Compile Include="TrieStringSearch.fs" />
     <Compile Include="pseq.fsi" />
     <Compile Include="pseq.fs" />
+    <Compile Include="SimpleTrees.fs" />
     <Compile Include="Reducers.fs" />
     <Compile Include="onlinelearning.fs" />
     <Compile Include="PriorityQueues.fs" />

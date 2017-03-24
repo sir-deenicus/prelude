@@ -7,6 +7,7 @@ open System.Collections.Generic
 open System.Threading.Tasks
 open System.Net
 open System.Linq
+open System.Text
 
 type MutableList<'a> = System.Collections.Generic.List<'a>
 type Hashset<'a> = System.Collections.Generic.HashSet<'a>
@@ -39,6 +40,16 @@ type ErrorBuilder() =
     member __.Return(x) = x
     member __.ReturnFrom(x) = x 
  
+type ErrorFallBuilder() =
+    member __.Bind(x:Lazy<'a>, f) =
+        try   
+            let a = x.Force()
+            None, Some a  
+        with e -> f (Some e, None) 
+
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x 
 
 type MaybeBuilder() =
     member __.Bind(x, f) =
@@ -48,6 +59,7 @@ type MaybeBuilder() =
     member __.Delay(f) = f()
     member __.Return(x) = Some x
     member __.ReturnFrom(x) = x
+
 
 type WaterfallBuilder() =
     member __.Bind(x, f) =
@@ -74,7 +86,13 @@ let waterfallOption = WaterfallOptionBuilder()
 
 let maybe = MaybeBuilder()
 
+type Either<'a,'b> = This of 'a | That of 'b
+
+///chain multiple unrelated things that may fail together
 let error = ErrorBuilder()
+
+///exits on first success otherwise falls through on things that may fail repeatedly 
+let errorFall = ErrorFallBuilder()
 
 let nestif = NestedIfBuilder()  
 
@@ -156,7 +174,16 @@ let inline keepRight f (x,y) = f x , y
 
 let inline pairapply f (x,y) = (f x, f y)
 
+let inline pairapply_obj (f:obj->'b) (x,y) = (f x, f y)
+
+
+let triapply f (a,b,c) = f a, f b, f c 
+
+let quadapply f (a,b,c,d) = f a, f b, f c, f d
+
 let pair a b = a,b 
+
+let pairOfArray (a:_[]) = a.[0], a.[1] 
 
 let inline pairop op (x,y) (u,v) = (op x u, op y v)
 
@@ -261,6 +288,8 @@ let fst_third (a,_,c) = a,c
 
 let fst_snd (a,b,_) = a,b
 
+let fst_snd3 (a,b,c) = a,b
+
 let fst_snd5 (a,b,_,_,_) = a,b
 
 let snd_third (_,b,c) = b,c 
@@ -279,16 +308,27 @@ let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
 type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b> 
 type IDict<'a,'b> = Collections.Generic.IDictionary<'a, 'b>
+
+module IDict =
+   let getOrDefault key def (idict:IDict<_,_>) = 
+     let found,v = idict.TryGetValue key
+     if found then v else def 
+
 //combinators don't make sense for mutable types
 module Dict = 
   let ofIDict (d:Collections.Generic.IDictionary<'a,'b>) = Dict d
+
+type Collections.Generic.IDictionary<'a, 'b> with
+  member this.tryFindIt key = 
+    let found,v = this.TryGetValue key
+    if found then Some v else None  
 
 type Dictionary<'a,'b>  with
  // static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
   static member ofSeq values = Dict(values |> dict) 
 
   member this.iter f = for (DictKV(_,v)) in this do f v
-  member this.getOrDef key def = 
+  member this.getOrDefault def key = 
      let found,v = this.TryGetValue key
      if found then v else def 
 
@@ -409,7 +449,7 @@ type Array with
      counts, counts |> (Seq.maxBy keyValueToValue) |> keyValueToPair
   
   static member takeAtPercent p (a: 'a []) = let len = float a.Length in a.[..max 0 (int(round(p * len)) - 1)]
-  static member  mapFilter f cond (seqs:'a[]) = [|for el in seqs do let mapped = f el in if cond mapped then yield mapped|] 
+  static member mapFilter f cond (seqs:'a[]) = [|for el in seqs do let mapped = f el in if cond mapped then yield mapped|] 
   static member sub2 start ends (arr:'a []) = arr.[start..ends]
   static member filterMap cond f seqs = [|for el in seqs do if cond el then yield f el|]
   static member splitEvenly ways (arr:'a[]) =
@@ -431,9 +471,18 @@ module Option =
  let mapNull f x = if x = null then None else Some (f x)
  let forAllNotEmpty f = function None -> false | Some x ->  f x
 
-module Array =      
-    let getFrom n (a:'a[]) = a.[n..]   
-    let removeDuplicates s = s |> set |> Set.toArray
+module Array =         
+    let sub3 n (a:'a[]) = a.[min n (a.Length - 1)..]
+
+    let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> arr.[row].[col]|] 
+    
+    ///e.g. ["a";"b";"c"] -> "a,b and c"
+    let joinWithThenAnd punct andor (ws : string[]) = 
+      match ws.Length with
+      | 1 ->  ws.[0]
+      | 0 -> ""
+      | _ -> let p1 = String.Join(punct, ws.[..ws.Length - 2]) 
+             p1 + " " + andor + " " + ws.LastElement
 
     ///compresses a 2D array in form [][] into an array of lists with all rows now ocuppying a single list per column.
     let collapseCols (data:'a[][]) = 
@@ -447,6 +496,7 @@ module Array =
     let filterElseTake filter sortfunc min_n n (a:'a[]) = 
        let na = Array.filter filter a
        if na.Length < min_n then subOrMax n (sortfunc a) else na
+    
 
     let suffix n (s:'a[]) = s.[max 0 (s.Length - n)..] 
     let prefix n (s:'a[]) = if s.Length = 0 then s else s.[..min (s.Length - 1) n] 
@@ -473,6 +523,9 @@ module Array =
                 incr c
                 if filter i a then yield a|]
    
+    let oddElements a = filteri (fun i _ -> i % 2 <> 0) a
+    let evenElements a = filteri (fun i _ -> i % 2 = 0) a
+
     let filterToColumn op c (d:'a[][]) = d |> Array.map (filteri (curryfst (op c)))
 
     let filterToColumnSingle op c (d:'a[]) = d |> filteri (curryfst (op c))
@@ -528,8 +581,6 @@ module Array2D =
 let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i]) 
 ///isParallel  
 let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
-
-let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> row|] |> Array.Parallel.map (fun row -> arr.[row].[col])
                 
 /////////////////////////////STRINGS////////////////////
 //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
@@ -609,10 +660,18 @@ let (|LowerCase|) s = tolower s
 
 let (|UpperCase|) s = toupper s
 
-let inline replace (oldvalue:string) replacement (str:string) = str.Replace(oldvalue,replacement)
+let inline replace (unwantedstr:string) replacement (str:string) = str.Replace(unwantedstr,replacement)
+
+let inline replace2 replacement (str:string) (unwantedstr:string) = str.Replace(unwantedstr,replacement)
 
 ///true when [sub]string is contained in [s]tring
 let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
+
+///true when [sub]string is contained in [s]tring
+let inline strcontains_raw (sub:string) (s:string) = s.Contains(sub)
+
+///true when [sub]string is contained in [s]tring, no trim
+let inline containedinStrRaw (sub:string) (s:string) = s.Contains(sub)
 
 ///true when [sub]string is contained in [s]tring
 let inline containedinStr (s:string) (sub:string) = s.Contains(trim sub)
@@ -631,8 +690,14 @@ let strContainsNof n (testStrings:string[]) (str:string) =
 let (|StrContains|_|) testString (str : string) = 
    if str.Contains(testString) then Some(true) else None  
 
-let (|StrContainsOneOf|_|) (testStrings : string[]) str = testStrings |> Array.tryFind (containedinStr str) 
+let (|StrContainsOneOf|_|) (testStrings) str = testStrings |> Seq.tryFind (containedinStr str) 
       
+let (|StrContainsAllRemove|_|) (testStrings : string[]) str = 
+     
+    nestifMaybe {
+         let! pass = testStrings |> Array.forall (containedinStr str) 
+         return (testStrings |> Array.fold (replace2 "") str)}
+
 let (|StrContainsAll|_|) (testStrings : string[]) str = 
     nestifMaybe {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
 
@@ -645,6 +710,8 @@ let (|StrContainsGroupRegEx|_|) t (str : string) =
       Some([|for g in groups.Groups -> g.Value|]) else None 
 
 let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
+
+let inline strContainsOneOfRaw testStrings str = testStrings |> Array.tryFind (containedinStrRaw str)  |> Option.isSome 
 
 let splitwSpace = splitstr [|" "|] 
 
@@ -691,21 +758,25 @@ type String with
    member s.Last = s.[s.Length - 1]
    
    member thisStr.splitbystrKeepEmpty ([<ParamArray>] splitbys : string[]) = thisStr.Split(splitbys, StringSplitOptions.None)
+   
+   member s.toUTF8Bytes() = 
+      let b = Encoding.Unicode.GetBytes(s);
+      Encoding.Convert(System.Text.Encoding.Unicode, System.Text.Encoding.UTF8, b)
+
+   member s.getBytes () = System.Text.Encoding.Unicode.GetBytes(s) 
 
 module String =  
     let removeSymbols s = s |> Seq.filter (Char.IsSymbol >> not) |> joinToString
+    let splitKeepQuotes txt = Text.RegularExpressions.Regex.Split(txt, """("[^"]+"|[^"\s]+)""") |> Array.filter (trim >> (<>) "")
+
+    let toUTF8Bytes (s:string) = 
+      let b = System.Text.Encoding.Unicode.GetBytes(s)
+      System.Text.Encoding.Convert(System.Text.Encoding.Unicode, System.Text.Encoding.UTF8, b)
+
+    let getBytes (s:string) = System.Text.Encoding.Unicode.GetBytes(s)  
 
     ///s.ToCharArray() |> Array.map string 
-    let inline letters (s:string) = s.ToCharArray() |> Array.map string   
-
-    //e.g. ["a";"b";"c"] -> "a,b and c"
-    let joinwithCommaThenAnd andor (ws : string[]) = 
-      match ws.Length with
-      | 1 ->  ws.[0]
-      | 0 -> ""
-      | _ -> let p1 = ws.[..ws.Length - 2] |> joinToStringWith ", " 
-             p1 + " " + andor + " " + ws.LastElement
-
+    let inline letters (s:string) = s.ToCharArray() |> Array.map string  
     
     let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
   
@@ -713,6 +784,7 @@ module String =
 
     let suffix n (s:string) = s.[max 0 (s.Length - n)..] 
   
+    ///zlenstr is the string returned if s = ""
     let prefix zlenstr n (s:string) = if s.Length = 0 then zlenstr else s.[..min (s.Length - 1) n] 
 
     let padcut padlen (s:string) = 
@@ -743,7 +815,7 @@ module String =
     let replaceThese f = replaceTheseGen splitstrWithSpace f
 
     ///convenience function to multiply replace within a string. Uses string.replace
-    let replaceMultiple words str = words |> Array.fold (fun nstr (w,repw) -> nstr |> replace w repw) str
+    let replaceMultiple words str = words |> Seq.fold (fun nstr (w,repw) -> if w = "" then nstr else nstr |> replace w repw) str
     
     ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
     let transformMultiple f words str = words |> Array.fold (fun nstr w -> nstr |> replace w (f w)) str
@@ -758,7 +830,9 @@ module String =
     let capitilizebySpace minlen s = s |> splitwSpace |> Array.mapi (fun i s -> if i = 0 || s.Length > minlen then s |> capitalizeFirstWord else s) |> joinToStringWithSpace
  
     let DecodeFromUtf8Bytes (utf8Bytes:byte []) =  
-        System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
+        System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length)  
+
+    let decodeFromUnicode (stringbytes : byte[]) = Text.Encoding.Unicode.GetString stringbytes
 
     let DecodeFromUtf8 (utf8String:string) = 
         // copy the string as UTF-8 bytes. 
@@ -785,7 +859,6 @@ module String =
                       (false, i, None)  
                       |> third  
 
-let pathCombine path1 path2 = IO.Path.Combine(path1, path2)
 ///very simple heuristic
 let splitToParagraphs singlebreak (s:string) = if singlebreak then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
 
@@ -814,7 +887,7 @@ let findSentenceTerminus lookforward numtake i s =
             found && seen+1 = numtake || (if lookforward then n >= strmax else n < 0), 
             (if found || (lookforward && n = strmax || n = 0 && not lookforward) then (seen + 1,n::seens) else (seen, seens)), 
             (if lookforward then n + 1 else n - 1)) (false,(0,[]),i) |> snd3 
-
+    
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
 
 module Hashset =
@@ -823,11 +896,37 @@ module Hashset =
 type System.Collections.Generic.List<'a> with
    static member Length (glist : Collections.Generic.List<'a>) = glist.Count
 
-module Seq =
+module Seq =  
+  let getEnumerator (sq:'a seq) = sq.GetEnumerator()
 
-  let flattenGroupBy sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
+  let map3 f a b c = 
+     let enuma,enumb,enumc = (getEnumerator a, getEnumerator b, getEnumerator c)
+
+     seq {let _ = enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext()  
+          yield f enuma.Current enumb.Current enumc.Current  
+          while enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext()  do
+            yield f enuma.Current enumb.Current enumc.Current  } 
+
+  let map4 f a b c d = 
+     let enuma,enumb,enumc,enumd = (getEnumerator a, getEnumerator b, getEnumerator c, getEnumerator d)
+
+     seq {let _ = enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext() && enumd.MoveNext()
+          yield f enuma.Current enumb.Current enumc.Current enumd.Current 
+          while enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext() && enumd.MoveNext() do
+            yield f enuma.Current enumb.Current enumc.Current enumd.Current } 
+
+  let zip4 (a:'a seq) b c d =
+     let enuma,enumb,enumc,enumd = (getEnumerator a, getEnumerator b, getEnumerator c, getEnumerator d)
+
+     seq {let _ = enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext() && enumd.MoveNext()
+          yield (enuma.Current, enumb.Current, enumc.Current, enumd.Current) 
+          while enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext() && enumd.MoveNext() do
+            yield (enuma.Current, enumb.Current, enumc.Current, enumd.Current) }  
+
+  let removeDuplicates s = s |> set |> Set.toArray
+  let groupByResultToArrays sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
   
-  let flattenGroupByWith f sq =  sq |> Seq.toArray |> Array.map (keepLeft f)
+  let mapGroupByWith f sq =  sq |> Seq.toArray |> Array.map (keepLeft f)
 
   let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float(f x))
 
@@ -838,16 +937,17 @@ module Seq =
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
   let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
-  
+   
   let splitSeqWith condition f seqs = 
-   seqs |> Seq.fold (fun ((current,all) as state) item ->
-        if condition (f item) then 
-          match current with 
-           | [] -> state
-           | cs -> [], (List.rev cs)::all
-         else item::current, all ) ([],[]) |> snd |> List.rev
+       let current, all = 
+           seqs |> Seq.fold (fun ((current,all) as state) item ->
+                if condition (f item) then 
+                  match current with 
+                   | [] -> state
+                   | cs -> [item], (List.rev cs)::all
+                 else item::current, all ) ([],[]) // |> snd |> List.rev
+       (List.rev current)::all |> List.rev
 
-  
   let filteri filter (vec:'a seq) = 
      let c = ref 0
      seq {for a in vec do 
@@ -888,8 +988,19 @@ type IO.Stream with
     let _ = stream.Read(buffer, 0,  size)
     buffer
 
+  member stream.WriteArray buffer =         
+    stream.Write(buffer, 0,  buffer.Length) 
+
   member stream.Reset() =
      stream.Seek(0L,IO.SeekOrigin.Begin)
+
+let inline closeAndDispose (trash: ^a) = 
+       (^a: (member Close:unit->unit) (trash))
+       (^a: (member Dispose:unit->unit) (trash))
+
+let int_to_bytes_BigEnd (i:int) = BitConverter.GetBytes(i) |> Array.rev
+
+let bytes_BigEndToInt (i:byte[]) = BitConverter.ToInt32(i |> Array.rev, 0)
 
 let eightBitsToByte (b:Collections.BitArray) = 
      let a = [|0uy|]
@@ -919,6 +1030,45 @@ let boolArrayToInt32 (b:bool[]) =
     Collections.BitArray(b).CopyTo(ints, 0)
     ints.[0]
 
+/////////////////
+let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
+////////
+let inline round (places:int) (num: float) = Math.Round(num, places)
+
+let secondsToText = function 
+    | 0. -> "Now"
+    | x when x > 60. && x < 3600. -> let m = (x / 60.) |> round 2 in string m + " minutes"
+    | x when x > 3600. && x <= 3600. * 24. -> ((x / 3600.) |> round 1 |> string) + " hours"
+    | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
+    | x -> (x |> round 2 |> string) + " seconds"
+
+let numberAndDecimalParts x = floor x, x - floor x
+
+let inline private toparts unitLarger unitSmaller scalesmall txtlarge txtsmall =
+    string unitLarger + txtlarge + if unitSmaller = 0. then "" else ((unitSmaller * scalesmall) |> round 1 |> string) +  txtsmall
+
+let hoursToText = function
+   | h when h < 0. -> "Not yet"
+   | h when h < 1./60. -> string(h * 3600. |> round 1) + " seconds"
+   | h when h < 1. -> string(h * 60. |> round 1) + " minutes"
+   | h when h < 24. ->  
+     let hrs,mins = numberAndDecimalParts h  
+     toparts hrs mins 60. " hours " " minutes"
+   | h when h > 24. * 7. * 52. -> 
+      let totyears, months = numberAndDecimalParts(h/(24. * 7. * 52.))  
+      toparts totyears months 12. " years " " months"
+   | h when h >= 730. -> 
+      let totmonths, weeks = numberAndDecimalParts(h/730.)  
+      toparts totmonths weeks 4.345 " months " " weeks"
+   | h when h > 24. * 7. ->  
+      let totweeks, days = numberAndDecimalParts (h/(24. * 7.)) 
+      toparts totweeks days 7. " weeks " " days"
+   | h  -> 
+      let totdays, hrs = numberAndDecimalParts (h/24.)
+      toparts totdays hrs 24. " days " " hours"                                    
+                                    
+
+
 type DateTime with
    member dt.StartOfWeek( startOfWeek ) =      
         let _diff = dt.DayOfWeek - startOfWeek |> int |> float
@@ -929,11 +1079,13 @@ type DateTime with
    
    member d.ToRoughDateString () = 
       let today = DateTime.Now.Date
-      let span = (d.Date - today).TotalDays 
+      let span = (d.Date - today).TotalDays
+      let spanh = (d - today).TotalHours
+       
       if span = -1. then d.ToShortTimeString() + ", yesterday"  
       elif d.Date = today then d.ToShortTimeString()
       elif span = 1. then d.ToShortTimeString() + ", tomorrow"
-      elif span > 1. && d.Day <= 28 then sprintf "the %dth, in %d days" d.Day (round span |> int)
+      elif span > 1. && d.Day <= 28 then sprintf "the %dth, in %s" d.Day (hoursToText spanh)
       else d.ToShortTimeString() + ", " + d.ToLongDateString()
 
 module DateTime = 
@@ -946,7 +1098,7 @@ module DateTime =
 
     dt.AddDays(-1 * (diff + wrap) |> float).Date
     
-let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1).ToUniversalTime()).TotalSeconds 
+let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1)).TotalSeconds 
 
 let fromUnixTime timestamp = DateTime(1970,1,1,0,0,0,0).AddSeconds( timestamp)
 
@@ -993,20 +1145,31 @@ let inline jenkinsOAThashGeneric (key: ^a []) =
 
 //-------------------------
 
-///really semantic sugar for set.min
-let minhash hset = hset |> Set.minElement  
-
-let minhashes maxiter fset = 
- let rec gethashes count minset fullset = 
-  match count with
-   | i when i >= maxiter || Set.count fullset = 0 -> minset
-   | i -> let minim = minhash fullset
-          gethashes (i + 1) (Set.add minim minset) (Set.remove minim fullset) 
- gethashes 0 Set.empty fset
-
 //////////////////////////////////
 
+
+let pathCombine path1 path2 = IO.Path.Combine(path1, path2)
+
+let combinePaths = List.fold pathCombine ""
+
 type IO.File with
+  ///'appends' to top of file
+ static member ReverseAppend (fname:string) encode decoder combine (data:'a) =
+      use stream = IO.File.Open(fname, IO.FileMode.Open)
+      if stream.Length > int64(Int32.MaxValue) then failwith "File Size too large"
+      else
+         let data0 = stream.ReadArray (int stream.Length) |> decoder  
+         let _ = stream.Seek(0L, IO.SeekOrigin.Begin)
+         combine(data, data0)
+         |> encode
+         |> stream.WriteArray   
+ 
+ ///'appends' to top of text file
+ static member ReverseAppendUTF (fname:string) (txt:string) = IO.File.ReverseAppend fname String.getBytes String.decodeFromUnicode String.Concat txt
+
+  ///'appends' to top of text file
+ static member ReverseAppendUTF8 (fname:string) (txt:string) = IO.File.ReverseAppend fname String.toUTF8Bytes String.DecodeFromUtf8Bytes String.Concat txt
+ 
  static member ReadAllTextOrCreate(fname:string) =
      if IO.File.Exists(fname) then
       IO.File.ReadAllText(fname)
@@ -1023,6 +1186,19 @@ type IO.File with
 
 ////////
 
+
+let tohtmlTableString headers d = 
+    let entryFormat horD xs = xs |> Seq.map (fun x -> sprintf "<t%s>%s</t%s>" horD x horD) |> joinToStringWith newLine
+    let els = 
+      d 
+      |> Seq.map (entryFormat "d" >> fun s -> "<tr>" + s + "</tr>") 
+      |> joinToStringWith newLine
+    sprintf "<table>%s%s</table>" (headers |> entryFormat "h") els
+
+let isUrl urlstr =        
+      let good, uri = Uri.TryCreate(urlstr, UriKind.Absolute) 
+      good && (uri.Scheme = Uri.UriSchemeHttp || uri.Scheme = Uri.UriSchemeHttps)
+
 let urlencode str = Uri.EscapeDataString str |> replace "%20" "+"
 
 let urldecode str = Uri.UnescapeDataString str |> replace "+" " "
@@ -1033,6 +1209,13 @@ let cleanURLofParams str =
     let findex = [for l in q -> l.Index] |> List.min 
     str.[..findex-1]
   else str                                                 
+
+let cleanURLofHash str =
+  let q = System.Text.RegularExpressions.Regex.Matches (str, "#")
+  if q.Count > 0 then
+    let findex = [for l in q -> l.Index] |> List.min 
+    str.[..findex-1]
+  else str  
 
 let getUrlPath(url:string) = 
   let uloc = url.LastIndexOf '/' 
@@ -1070,43 +1253,6 @@ let unshorten (shorturl:string) =
     req.AllowAutoRedirect <- false
     req.GetResponse().Headers.["Location"]
  
-/////////////////
-let MonthsIntToString = Map [1, "January"; 2, "February"; 3, "March"; 4, "April"; 5,"May"; 6, "June"; 7, "July"; 8, "August"; 9, "September"; 10, "October"; 11, "November"; 12, "December"] 
-////////
-let inline round (places:int) (num: float) = Math.Round(num, places)
-
-let secondsToText = function 
-    | 0. -> "Now"
-    | x when x > 60. && x < 3600. -> let m = (x / 60.) |> round 2 in string m + " minutes"
-    | x when x > 3600. && x <= 3600. * 24. -> ((x / 3600.) |> round 1 |> string) + " hours"
-    | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
-    | x -> (x |> round 2 |> string) + " seconds"
-
-let inline numberAndDecimalParts x = floor x, x - floor x
-
-let inline private toparts unitLarger unitSmaller scalesmall txtlarge txtsmall =
-    string unitLarger + txtlarge + if unitSmaller = 0. then "" else ((unitSmaller * scalesmall) |> round 1 |> string) +  txtsmall
-
-let hoursToText = function
-   | h when h < 0. -> "Not yet"
-   | h when (h * 60.) < 1. -> string(h / 3600. |> round 1) + " seconds"
-   | h when h < 1. -> string(h * 60. |> round 1) + " minutes"
-   | h when h < 24. ->  
-     let hrs,mins = numberAndDecimalParts h  
-     toparts hrs mins 60. " hours " " minutes"
-   | h when h > 24. * 7. * 52. -> 
-      let totyears, months = numberAndDecimalParts(h/(24. * 7. * 52.))  
-      toparts totyears months 4. " years " " months"
-   | h when h > 24. * 7. * 4. -> 
-      let totmonths, weeks = numberAndDecimalParts(h/(24. * 7. * 4.))  
-      toparts totmonths weeks 4. " months " " weeks"
-   | h when h > 24. * 7. ->  
-      let totweeks, days = numberAndDecimalParts (h/(24. * 7.)) 
-      toparts totweeks days 7. " weeks " " days"
-   | h  -> 
-      let totdays, hrs = numberAndDecimalParts (h/24.)
-      toparts totdays hrs 24. " days " " hours"                                    
-                                    
         
 //////////////
 
@@ -1133,7 +1279,7 @@ let time_this2 n timeform f =
    ts, y
 ///////////////////
 
-type ConsoleInterface(fname, onData,onError, ?args) =   
+type ConsoleInterface(fname, onData,onError, ?args, ?onExit) =   
 
    let finfo = Diagnostics.ProcessStartInfo(fname , 
                  RedirectStandardOutput = true , 
@@ -1143,7 +1289,7 @@ type ConsoleInterface(fname, onData,onError, ?args) =
                  UseShellExecute = false       ,
                  WindowStyle = Diagnostics.ProcessWindowStyle.Hidden)  
 
-   do match args with | None -> () | Some a -> finfo.Arguments <- a
+   do match args with | None -> () | Some a -> finfo.Arguments <- a   
 
    let mutable exe = None
 
@@ -1154,6 +1300,8 @@ type ConsoleInterface(fname, onData,onError, ?args) =
       exe.Value.OutputDataReceived.Add onData
       exe.Value.ErrorDataReceived.Add onError
       ignore <| exe.Value.Start()
+
+      match onExit with | None -> () | Some f -> exe.Value.Exited.Add f
       exe.Value.BeginOutputReadLine() 
       exe.Value.StandardInput.WriteLine("")
       exe.Value.StandardInput.WriteLine(s)
@@ -1166,7 +1314,7 @@ type ConsoleInterface(fname, onData,onError, ?args) =
          | Some exec ->   
            if exec.HasExited then __.Close(); __.Start str    
            else exec.StandardInput.Flush()
-                exec .StandardInput.WriteLine (str)  
+                exec.StandardInput.WriteLine (str)  
          | _ -> ()
 
    member __.Close () =

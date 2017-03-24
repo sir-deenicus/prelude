@@ -65,11 +65,14 @@ let DiscreteSample p = cdf p |> getDiscreteSample
 let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =   
     let vec, vec2 = Array.ofSeq vect1, Array.ofSeq vect2
     let xm, ym = vec |> Array.average , vec2 |> Array.average  
-    let cov, varx,vary = (vec, vec2) ||> Array.fold2 (fun (cov, varx, vary) x y -> 
+    let cov_, varx_,vary_ = (vec, vec2) ||> Array.fold2 (fun (cov, varx, vary) x y -> 
                                         cov + (x - xm) * (y - ym), 
                                         varx + (squared (x - xm)), 
                                         vary + (squared (y - ym))) 
                                     (Unchecked.defaultof<'a>, Unchecked.defaultof<'a>, Unchecked.defaultof<'a>) 
+    let len = float vec.Length
+    let cov,varx,vary = cov_/len, varx_/len,vary_/len
+
     let beta = cov/varx
     beta, ym - beta * xm, cov, varx, vary 
 
@@ -85,6 +88,16 @@ let relativeMeanDiff (v:float[]) = let meandiff = meanDifference v in meandiff, 
 let online_variance_mean variance mean_n n x =
     let mean_n' = mean_n + (x - mean_n) / n
     variance + (x - mean_n) * (x - mean_n'), mean_n', n + 1. 
+
+///m12 = n = means = 0 
+///| E(X),E(Y), covXY,n
+let online_covariance (mean_n, mean2_n, m12,n) (x, y) =
+    let n' = n + 1.
+    let delta1 = (x-mean_n) / n'
+    let delta2 = (y - mean2_n) / n'
+    let m12' = m12 + (n'-1.) * delta1 * delta2 - m12 / n'
+    let mean_n', mean2_n' = mean_n + delta1, mean2_n + delta2
+    mean_n',mean2_n', m12',n'
 
 let online_mean mean_n n x =
     let mean_n' = mean_n + (x - mean_n) / n
@@ -124,7 +137,24 @@ let inline exponentialSmoothing f alpha eavg point =
    let y = float (f point)
    alpha * y + (1. - alpha) * eavg
 
+type SimpleStatsInfo = {
+   Mean : float
+   Sum : float
+   Stddev : float
+   N : int
+   Min : float
+   Max : float
+   Median : float
+}
 
+let statsInfo (x:float seq) = 
+    { Sum = Seq.sum x 
+      Mean = Seq.average x
+      Stddev = stddev x
+      N = Seq.length x
+      Min = Seq.min x
+      Max = Seq.max x
+      Median = median (Seq.toArray x)}
 
 //***************************PERMUTATIONS AND CHANCE******************//
 //let rec partitions = function                                     
@@ -201,6 +231,9 @@ type RandomX() =
   static member Next() = 
     let x = RandomX.checkInst()
     x.Next() 
+  static member NextDouble() = 
+    let x = RandomX.checkInst()
+    x.NextDouble()
 
   static member NextDouble(minim,maxim) = 
     let x = RandomX.checkInst()

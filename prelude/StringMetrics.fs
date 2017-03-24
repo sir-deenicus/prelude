@@ -166,6 +166,17 @@ let inline splitNatATimeStr N (str:string) =
                 else bset, curCombo + string curchar, i + 1, cnt + 1) (Set.empty ,"", 0,0)
     |> fst4
 
+///really semantic sugar for set.min
+let minhash hset = hset |> Set.minElement  
+
+let minhashes maxiter fset = 
+ let rec gethashes count minset fullset = 
+  match count with
+   | i when i >= maxiter || Set.count fullset = 0 -> minset
+   | i -> let minim = minhash fullset
+          gethashes (i + 1) (Set.add minim minset) (Set.remove minim fullset) 
+ gethashes 0 Set.empty fset
+
 let strTominHash splitWith = splitWith >> (minhashes 4)
 
 ///very fast while fairly accurate way to fuzzy compare 2 strings. Suggested, take 2. For returned score, Higher is better

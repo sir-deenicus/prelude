@@ -74,7 +74,7 @@ let extractAveragedPerceptron parameters =
 let perceptronClassify (weight,b) x = sign(Array.dotproduct weight x + b)
                                         
 
-let logisticRegress a vec y = regressStream a logistic (+) vec y
+let logisticRegress a vec y = regressStream a logistic (+) vec y     
 
 
 let linearRegress a vec y = regressStream a id (-) vec y
@@ -114,7 +114,7 @@ let logisticClassify w x =
 let knn distfunc n point data =  
     let nears = data |> Array.map (fun v2 -> v2, distfunc point v2) 
                      |> Array.sortBy snd  
-    nears.[1..] |> Array.sub2 0 n 
+    nears  |> Array.sub2 0 n 
 
 ////////
 
@@ -158,8 +158,8 @@ let inline online_kmeans_sphere nu (weights : 'a [] []) example =
      for i in 0..topweight.Length - 1 do 
        topweight.[i] <- (topweight.[i] + nu * example.[i])
      
-     let total = topweight |> Array.magnitude
-     Array.iteri (fun i w -> topweight.[i] <- w / total) topweight
+     let mag = topweight |> Array.magnitude
+     Array.iteri (fun i w -> topweight.[i] <- w / mag) topweight
 
 
     
