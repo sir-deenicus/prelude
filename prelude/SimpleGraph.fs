@@ -221,37 +221,52 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
            edges.Remove v
 
     member x.InsertEdge (v0,v1, w) = 
-        maybe {
-        let! elist0 = edges.tryFind v0
-        let! elist1 = edges.tryFind v1
-
-        let added1 = elist0.Add (WeightPart(w, v1))
-        let added2 = elist1.Add (WeightPart(w, v0))
         let x,y = lessToLeft (v0,v1)
-        let _ = if track_weights then ignore <| edgeWeights.Add(struct(x,y), w) else ()
-        return (added1,added2)}  
+       
+        if not track_weights || not <| edgeWeights.ContainsKey (struct(x,y)) then
+          maybe {
+          let! elist0 = edges.tryFind v0
+          let! elist1 = edges.tryFind v1
+
+          let added1 = elist0.Add (WeightPart(w, v1))
+          let added2 = elist1.Add (WeightPart(w, v0))
+        
+          let _ = if track_weights then ignore <| edgeWeights.ExpandElseAdd (struct(x,y)) id w else ()
+          return (added1,added2)} else None
 
     member x.ContainsVertex v = edges.ContainsKey v 
     
-    member x.AdjustWeight f v1 v2 = 
+    member x.AdjustWeight f v1 v2 =         
+        let vertless,vertHigher = lessToLeft (v1,v2)
         maybe {
         let! elist0 = edges.tryFind v1 
-        let! {Weight = w} as v' = Seq.tryFind (fun (wv:WeightPart<_>) -> wv.Vert = v2) elist0
+        let! {Weight = w} as v' = 
+            if track_weights then 
+              match edgeWeights.tryFind (struct (vertless,vertHigher)) with
+               | Some w -> Some(WeightPart(w,v2)) 
+               | _ -> None
+            else Seq.tryFind (fun (wv:WeightPart<_>) -> wv.Vert = v2) elist0
 
         let elist1 = edges.[v2]
 
         elist0.Remove(v') 
-        let adj1 = elist0.Add(WeightPart(f w,v2))
+
+        let w' = f w
+        let adj1 = elist0.Add(WeightPart(w',v2))
         
         elist1.Remove(WeightPart(w,v1))
-        let adj2 = elist1.Add(WeightPart(f w,v1))
-       
+        let adj2 = elist1.Add(WeightPart(w',v1))
+        
+        edgeWeights.[struct (vertless,vertHigher)] <- w'
+        
         return (adj1,adj2)}  
 
+    member __.EdgeWeights = edgeWeights
+
     member x.GetEdgeWeight v1 v2 = 
+        let a,b = lessToLeft (v1,v2)        
         maybe {
-        let! elist0 = edges.tryFind v1 
-        let! {Weight = w} as v' = Seq.tryFind (fun (wv:WeightPart<_>) -> wv.Vert = v2) elist0 
+        let! w = edgeWeights.tryFind (struct(a,b))
         return w} 
 
     member x.ContainsEdge v1 v2 = 
