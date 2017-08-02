@@ -133,6 +133,7 @@ let inline exponentialAverage f alpha init (data : 'a seq) =
                     let y = float (f x)
                     alpha * y + (1. - alpha) * s_t) y1 
 
+///low alpha biases towards past, high alpha biases towards most recent
 let inline exponentialSmoothing f alpha eavg point =   
    let y = float (f point)
    alpha * y + (1. - alpha) * eavg

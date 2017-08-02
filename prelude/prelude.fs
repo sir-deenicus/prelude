@@ -189,6 +189,8 @@ let inline pairop op (x,y) (u,v) = (op x u, op y v)
 
 let inline addPairs x y = pairop (+) x y
 
+let inline applyToPair op (x,y) = op x y
+
 let inline joinpair op (x,y) = op x y
    
 let inline lessToLeft (a,b) = if a < b then a,b else b,a 
@@ -642,7 +644,7 @@ let slpitStrs = [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "
 ///Note...does not split periods. Splits to words using the following characters: [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
 let splitToWords = splitstr slpitStrs
 ///Like regular splitToWords but eliminates periods while using a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
-let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;–!#\|\010/\\""()\000\n—\[\]“\>\<”]") |> Array.filterMap ((<>) "") (trimWith splitterchars)
+let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;\–!#\|\010/\\""()\000\n—\[\]“\>\<”]") |> Array.filterMap ((<>) "") (trimWith splitterchars)
 
 let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
 
@@ -1068,6 +1070,8 @@ let hoursToText = function
       toparts totdays hrs 24. " days " " hours"                                    
                                     
 
+let totalhours (d1:DateTime) (d2:DateTime) = (d2 - d1).TotalHours
+let totaldays (d1:DateTime) (d2:DateTime) = (d2 - d1).TotalDays
 
 type DateTime with
    member dt.StartOfWeek( startOfWeek ) =      

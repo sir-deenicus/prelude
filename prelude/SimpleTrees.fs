@@ -1,10 +1,13 @@
 ﻿module SimpleTrees
 
+open Prelude.Common     
+open Prelude.SimpleGraphs
+open System
+
 type 'a Tree = 
      | Node of 'a 
      | Branch of 'a * 'a Tree list
-     | Empty
-
+     | Empty            
 
 
 let rec depthFirstMap f = function
@@ -26,5 +29,78 @@ let rec depthFirstFilter keepChild f = function
                   match nodes' with 
                     |  [] -> Empty
                     | tree -> Branch(n,tree)
-        
- 
+
+let rec mergeTree = function
+      | Node (n)  -> [Node n]
+      | Empty  -> []
+      | Branch(n, nodes) ->
+            let nodes' = nodes |> List.collect (mergeTree)
+            Node n::nodes'
+
+let rec mergeTreeBelowDepth maxd d = function        
+      | Branch(n,bs) when d < maxd ->
+          Branch(n, List.map (mergeTreeBelowDepth maxd (d+1)) bs)
+      | Node _ as n -> n
+      | Empty as n -> n 
+      | Branch(_,_) as branch when d>= maxd ->
+          match mergeTree branch with           
+           | Node n::ns -> Branch(n,ns)
+           | [n] -> n
+           | _ -> Empty //shouldn't happen      
+      | n -> n  
+      
+let foldTree state modifyState modifyNode foldBranch = 
+     let rec foldtree state = function  
+               | Branch(n,bs) -> List.map (foldtree (modifyState state)) bs |> foldBranch (modifyNode state n) 
+               | Node n -> modifyNode state n
+               | Empty -> state
+     foldtree state 
+
+let rec treeDepth d = function  
+     | Branch(_,bs) ->  List.map (treeDepth (d+1)) bs |> List.max 
+     | Node _ -> d
+     | Empty -> 0
+
+let rec countTreeNodes = function  
+     | Branch(_,bs) ->  
+          let tots,brs = List.map (countTreeNodes) bs |> List.unzip
+          let sum = List.sum tots 
+          printfn "%A" (tots,sum)
+          sum+1,Branch(sum, brs)    
+     | Node _ -> 1, Node 0
+     | Empty -> 0,Empty
+
+let rec countTreeNodesCollapseBelow d n = function 
+     | Branch(_,bs) when n > d ->  
+          let tots,_ = List.map (countTreeNodesCollapseBelow d (n+1)) bs |> List.unzip
+          let sum = List.sum tots 
+          sum + 1, Node sum   
+      
+     | Branch(_,bs) ->  
+          let tots,brs = List.map (countTreeNodesCollapseBelow d (n+1)) bs |> List.unzip
+          let sum = List.sum tots
+          sum+1,Branch(sum, brs)    
+     | Node _ -> 1, Node 0
+     | Empty -> 0,Empty
+
+let dispTree f = foldTree ("",0) 
+                         (fun (s,n) -> s,n+1) 
+                         (fun (s,i) n -> s + "\n|" + String.replicate i "_" + f n,i) 
+                         (fun n l -> l |> List.fold (fun (s1,i1) (s2,i2) -> s1 + s2, max i1 i2) n)
+
+
+let rec weightedGraphToTree (fg:WeightedGraph<_>) (visited:Set<string>) (node:WeightPart<string>) = 
+    match (fg.GetEdges node.Vert) with 
+      | Some h when h.Count = 0 -> Node (node.Vert,node.Weight)  
+      | None -> Node (node.Vert,node.Weight)  
+      | Some edges  ->        
+         let children = 
+                edges
+                |> Seq.toArray                  
+                |> Array.filterMap 
+                    (fun w -> w.Vert |> visited.Contains |> not) 
+                    (fun e -> 
+                        weightedGraphToTree fg (visited.Add node.Vert) (e))
+
+         if children.Length = 0 then Node (node.Vert,node.Weight)  
+         else Branch ((node.Vert,node.Weight), List.ofArray children)

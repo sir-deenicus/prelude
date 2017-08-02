@@ -207,7 +207,13 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
     let track_weights = defaultArg trackweights false
     
     member x.EdgeData = edges 
-    member x.InsertRange es = edges.Clear(); edges <- es
+
+    member x.InsertRange (es,ews) = 
+        edges.Clear() 
+        edges <- es
+        edgeWeights.Clear() 
+        edgeWeights <- ews
+
     member x.InsertVertex(s:'a) =  
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s,Hashset()) 
@@ -217,9 +223,17 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
        match (edges.tryFind v) with
         | None -> false
         | Some elist ->                                         
-           elist |> Seq.iter (fun ((weight_v2)) -> edges.[weight_v2.Vert].Remove(weight_v2) |> ignore)
+           elist |> Seq.iter (fun ((weight_v2)) -> 
+                      let vertless,vertHigher = lessToLeft (v,weight_v2.Vert)
+                      let node = struct (vertless,vertHigher)
+                      match edgeWeights.tryFind node with 
+                               | Some _ -> ignore <| edgeWeights.Remove node
+                               | _ -> ()
+           
+                      edges.[weight_v2.Vert].Remove(weight_v2) |> ignore)
            edges.Remove v
 
+           
     member x.InsertEdge (v0,v1, w) = 
         let x,y = lessToLeft (v0,v1)
        
@@ -238,28 +252,29 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
     
     member x.AdjustWeight f v1 v2 =         
         let vertless,vertHigher = lessToLeft (v1,v2)
-        maybe {
-        let! elist0 = edges.tryFind v1 
-        let! {Weight = w} as v' = 
-            if track_weights then 
-              match edgeWeights.tryFind (struct (vertless,vertHigher)) with
-               | Some w -> Some(WeightPart(w,v2)) 
-               | _ -> None
-            else Seq.tryFind (fun (wv:WeightPart<_>) -> wv.Vert = v2) elist0
+        if track_weights then        
+          maybe {
+          let! w = match edgeWeights.tryFind (struct (vertless,vertHigher)) with 
+                     | Some _ as w -> w 
+                     | _ -> x.InsertEdge(v1,v2,0.) |> ignore; Some 0.
+                 
+          let v' = WeightPart(w,v2)
+           
+          let elist0 = edges.[v1]
+          let elist1 = edges.[v2]
 
-        let elist1 = edges.[v2]
+          elist0.Remove(v') 
 
-        elist0.Remove(v') 
-
-        let w' = f w
-        let adj1 = elist0.Add(WeightPart(w',v2))
+          let w' = f w
+          let adj1 = elist0.Add(WeightPart(w',v2))
         
-        elist1.Remove(WeightPart(w,v1))
-        let adj2 = elist1.Add(WeightPart(w',v1))
+          elist1.Remove(WeightPart(w,v1))
+          let adj2 = elist1.Add(WeightPart(w',v1))
         
-        edgeWeights.[struct (vertless,vertHigher)] <- w'
+          edgeWeights.[struct (vertless,vertHigher)] <- w'
         
-        return (adj1,adj2)}  
+          return (adj1,adj2)}  
+        else None
 
     member __.EdgeWeights = edgeWeights
 
@@ -297,6 +312,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
                   sorted.Add (WeightPart(w_v2.Weight, lessToLeft(k, w_v2.Vert))) 
                   |> ignore  )) 
       sorted
+
     ///if do max=true it does maximum spanning tree instead
     member x.MinimumSpanningTree(?domax) = 
             let dir = if (defaultArg domax false) then -1. else 1.
@@ -337,7 +353,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
   
     member x.Vertices = Hashset(edges.Keys)  
     
-    member g.dijkstra_full one source = 
+    member g.dijkstra_full source = 
      let dists = Dict.ofSeq [source, 0.] 
      let prev = Dict()
      let vs = g.Vertices
@@ -364,7 +380,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
           | Some vs ->  
             vs |> Seq.iter (fun v2 -> 
               if not (visited.Contains v2.Vert) then
-                let alt = dists.[next] + v2.Weight * one                              
+                let alt = dists.[next] + v2.Weight                               
                 if alt < dists.[v2.Vert] then 
                   dists.[v2.Vert] <- alt
                   prev.[v2.Vert] <- Some next
@@ -382,7 +398,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
                 (fun (Some p,l) -> prev.getOrDefault None p, p::l) 
                 (Some target, [])  
                       
-    member g.dijkstra one source target = 
+    member g.dijkstra source target = 
      let dists = Dict.ofSeq [source, 0.] 
      let prev = Dict()
      let vs = g.Vertices
@@ -410,7 +426,7 @@ type WeightedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) =
             | Some vs ->  
               vs |> Seq.iter (fun v2 -> 
                 if not (visited.Contains v2.Vert) then
-                  let alt = dists.[next] + v2.Weight * one                              
+                  let alt = dists.[next] + v2.Weight                               
                   if alt < dists.[v2.Vert] then 
                     dists.[v2.Vert] <- alt
                     prev.[v2.Vert] <- Some next
