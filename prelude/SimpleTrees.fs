@@ -83,6 +83,7 @@ let rec countTreeNodesCollapseBelow d n = function
      | Node _ -> 1, Node 0
      | Empty -> 0,Empty
 
+
 let dispTree f = foldTree ("",0) 
                          (fun (s,n) -> s,n+1) 
                          (fun (s,i) n -> s + "\n|" + String.replicate i "_" + f n,i) 
@@ -104,3 +105,27 @@ let rec weightedGraphToTree (fg:WeightedGraph<_>) (visited:Set<string>) (node:We
 
          if children.Length = 0 then Node (node.Vert,node.Weight)  
          else Branch ((node.Vert,node.Weight), List.ofArray children)
+         
+
+let rec depthFirstInsert f node = function
+      | Node (n) -> if f n then Branch(n,[node]) else Node n
+      | Empty -> node
+      | Branch(n, nodes) ->
+            if f n then Branch(n,node::nodes)
+            else 
+                  let nodes' = nodes |> List.map (depthFirstInsert f node) |> List.filter ((<>) Empty)
+
+                  match nodes' with 
+                    |  [] -> Empty
+                    | tree -> Branch(n,tree)
+
+ 
+let nodeNameStr f = function | Empty -> "" | Node n -> f n | Branch (n,_) -> f n
+
+
+let rec treeToVerticesAndEdges parentNode = function  
+      | Node n -> [n], [(parentNode,n)]
+      | Branch(n,bs) -> let g = bs |> List.map (treeToVerticesAndEdges n) 
+                        let vs,es = List.unzip g
+                        n::List.concat vs,(parentNode,n)::List.concat es      
+      | Empty -> [],[]

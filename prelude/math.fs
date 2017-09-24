@@ -264,8 +264,9 @@ let (|RoundTo|) n x = round n x
 ///bucketRange 2 5 n will round to 2 places and allow only multiples of 5. n = 11..14 -> 10
 ///and n = 15..19 -> 15. for 2 0.5 n, n = 21.0..21.4 -> 21 and n = 21.5..21.9 go to 21.5, integers are unaffected 
 let inline bucketRange roundTo bucketSize m = 
-   let num = (round roundTo m) 
-   if num < bucketSize then 0. else num - num % bucketSize
+   let num = abs(round roundTo m) 
+   let s = float (sign m)
+   if num < bucketSize then 0. else s * (num - num % bucketSize)
    
 ///scaleTo scales a number to rmin and rmax where rangemin and max are the expected range of the number.
 ///examples: scaleTo -10 10 -1000. 1000. -10. = -0.1, a number with range
@@ -305,6 +306,13 @@ module Array =
     let inline lp_norm f (vec1:'a[]) (vec2:'a[]) = Array.fold2 (fun sum x1 x2 -> f(x1 - x2) + sum) 0. vec1 vec2
     let inline euclideanDist v v2 = lp_norm (float >> squared) v v2 |> sqrt 
     let inline manhattanDist v v2 = lp_norm (float >> abs) v v2 
+
+    let parts = Array.map (flip (-) 1) [|2;3;3;2;3;1;1;3;1;2;2;1|]
+
+    let inline crossproduct (v1:_[])  (v2:_[]) =
+               [|for i in 0..4..parts.Length - 4 -> 
+                   v1.[parts.[0+i]] * v2.[parts.[1+i]] - v1.[parts.[2+i]] * v2.[parts.[3+i]] |]
+
     let inline normalizeWeights (a: ('a * 'b) []) = 
       let tot = Array.sumBy snd a
       Array.map (keepLeft (flip (/) tot)) a

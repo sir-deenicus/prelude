@@ -26,6 +26,9 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s,Hashset()) 
         contained
+
+    member x.InEdges v =
+        [|for (KeyValue(struct(a,b),_)) in edgeWeights do if b = v then yield (a,b) |]
     
     member x.Remove(v:'a) = 
        match (edges.tryFind v) with

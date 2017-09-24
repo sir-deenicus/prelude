@@ -81,6 +81,18 @@ let rec countTreeNodesCollapseBelow d n = function
      | Node _ -> 1, Node 0
      | Empty -> 0,Empty
 
+let rec depthFirstInsert f node = function
+      | Node (n) -> if f n then Branch(n,[node]) else Node n
+      | Empty -> node
+      | Branch(n, nodes) ->
+            if f n then Branch(n,node::nodes)
+            else 
+                  let nodes' = nodes |> List.map (depthFirstInsert f node) |> List.filter ((<>) Empty)
+
+                  match nodes' with 
+                    |  [] -> Empty
+                    | tree -> Branch(n,tree)
+
 
 
 let dispTree = foldTree ("",0) 
@@ -107,6 +119,10 @@ let toJulian (dateTime:System.DateTime) =
 
 let toJulian2 (date:System.DateTime) = date.ToOADate() + 2415018.5;
 toJulian2 (System.DateTime(1980,1,1)), toJulian2 (System.DateTime(2012,1,1))
+
+let t = Branch("", [Branch("a", [Node "ab";Node "aa"]);Branch("b", [Node "ba";Node "bat"]); Node "d"])
+
+depthFirstInsert ((=) "bat") (Node "bats") t
 
 (Node("a")) |> treeDepth2
 
