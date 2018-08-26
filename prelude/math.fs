@@ -8,6 +8,8 @@ let random = new Random()
 
 let pi = Math.PI  
 
+
+
 let inline pow x y = Math.Pow(float x,float y)
 
 let inline squared (x: ^a) = x * x  
@@ -59,7 +61,7 @@ let getDiscreteSample (pcdf:float[]) =
     
     abs(cummProb pcdlen - pcdlen) 
 
-let DiscreteSample p = cdf p |> getDiscreteSample  
+let discreteSample p = cdf p |> getDiscreteSample  
 
 ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
 let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =   
@@ -288,19 +290,14 @@ let log10bucket n x_ =
  let y' = y_decim |> round n
  y' * (10. ** exponent) * (sign x_ |> float)
 
+
+let logistic x = 1./(1. + exp -x)
+
+let logisticRange low high x = 
+    let x' = scaleTo -6. 6. low high x
+    logistic x'
+
 //***************************Array Useful Vector Math******************//
-let inline normalizeInPlace data = 
-   let total = data |> Array.sum
-   data |> Array.iteri (fun i x -> data.[i] <- x/ total) 
-
-
-let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =  
-  let den = numRows 
-  let outArr = Array.create rows.[0].Length (Unchecked.defaultof<'b>)
-  for i in 0..rows.[0].Length - 1 do
-       for j in 0..int den - 1 do
-         outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
-  outArr
   
 module Array =
     let inline lp_norm f (vec1:'a[]) (vec2:'a[]) = Array.fold2 (fun sum x1 x2 -> f(x1 - x2) + sum) 0. vec1 vec2
@@ -316,6 +313,19 @@ module Array =
     let inline normalizeWeights (a: ('a * 'b) []) = 
       let tot = Array.sumBy snd a
       Array.map (keepLeft (flip (/) tot)) a
+    let inline normalizeInPlace data = 
+        let total = data |> Array.sum
+        data |> Array.iteri (fun i x -> data.[i] <- x/ total) 
+
+
+    let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) (rows : 'a[][]) =  
+      let den = numRows 
+      let outArr = Array.create rows.[0].Length (Unchecked.defaultof<'b>)
+      for i in 0..rows.[0].Length - 1 do
+           for j in 0..int den - 1 do
+             outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
+      outArr
+
 
 type Array with
  static member inline shuffle (arr : 'a []) =  (arr |> Array.sortBy (fun _ -> random.Next())) 
@@ -342,7 +352,7 @@ type Array with
  static member inline cosineSimilarity tol v1 v2 =
     Array.dotproduct v1 v2 / ((Array.magnitude v1 * Array.magnitude v2) + tol)
 
- static member inline colAverageFloats (rows:'a[][]) = colAverageGen (float rows.Length) float rows
+ static member inline colAverageFloats (rows:'a[][]) = Array.colAverageGen (float rows.Length) float rows
  
 type 'a ``[]`` with
  ///O(n) in place

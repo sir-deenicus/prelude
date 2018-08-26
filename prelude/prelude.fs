@@ -110,11 +110,11 @@ let inline (|ToStringArray|) d = d |> Array.map string
 
 let (|ToArray|) d = d |> Seq.toArray
 
-let inline isNumber n = Double.TryParse n |> fst        
+let inline isNumber (n:string) = Double.TryParse n |> fst        
 
 let (|ToDateTime|) d = DateTime.Parse d
 
-let (|IsDateTime|IsNumber|JustString|) d = 
+let (|IsDateTime|IsNumber|JustString|) (d:string) = 
    let isn, n = Double.TryParse d
    if isn then IsNumber n
    else 
@@ -122,11 +122,11 @@ let (|IsDateTime|IsNumber|JustString|) d =
     if p then IsDateTime dt 
     else JustString d   
 
-let toDouble s = 
+let toDouble (s:string) = 
     maybe {  let b, v = Double.TryParse(s)
              if b then return v else return! None} 
 
-let toInt s = 
+let toInt (s:string) = 
     maybe { let b, v = Int32.TryParse(s) in if b then return v else return! None} 
         
 let containsDash (s:string) = maybe {if s.Contains("-") then return s else return! None }
@@ -479,7 +479,7 @@ module Array =
     let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> arr.[row].[col]|] 
     
     ///e.g. ["a";"b";"c"] -> "a,b and c"
-    let joinWithThenAnd punct andor (ws : string[]) = 
+    let joinWithThenAnd (punct:string) andor (ws : string[]) = 
       match ws.Length with
       | 1 ->  ws.[0]
       | 0 -> ""
@@ -616,7 +616,7 @@ let newLine = Environment.NewLine
 
 let DocumentsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
 
-let inline joinToStringWith sep (s:'a seq) = String.Join(sep, s)
+let inline joinToStringWith (sep:string) (s:'a seq) = String.Join(sep, s)
 
 let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
 
@@ -628,7 +628,7 @@ let splitterchars =  [|' '; ',' ; '\t'; '?'; ':' ;'–'; ';' ; '!' ; '|';  '\010
 let inline trim (str: string) = str.Trim()
 
 ///trims with passed array, variable superflouschars provides: ' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'
-let trimWith charsToTrim (s:string) = s.Trim(charsToTrim)
+let trimWith (charsToTrim:_[]) (s:string) = s.Trim(charsToTrim)
 
 ///charArr (s:string) = s.ToCharArray()
 let inline char_array (s:string) = s.ToCharArray()
@@ -689,7 +689,7 @@ let strContainsNof n (testStrings:string[]) (str:string) =
               satisfied || i=testStrings.Length-1, satisfied, i + 1, m') 
            (false,false,0,0) |> snd4      
 
-let (|StrContains|_|) testString (str : string) = 
+let (|StrContains|_|) (testString:string) (str : string) = 
    if str.Contains(testString) then Some(true) else None  
 
 let (|StrContainsOneOf|_|) (testStrings) str = testStrings |> Seq.tryFind (containedinStr str) 
@@ -703,7 +703,7 @@ let (|StrContainsAllRemove|_|) (testStrings : string[]) str =
 let (|StrContainsAll|_|) (testStrings : string[]) str = 
     nestifMaybe {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
 
-let (|StrContainsRemove|_|) t (str : string) = 
+let (|StrContainsRemove|_|) (t:string) (str : string) = 
    if str.Contains(t) then Some(str.Replace(t,"")) else None 
 
 let (|StrContainsGroupRegEx|_|) t (str : string) = 

@@ -2,7 +2,7 @@
 // http://clojure.com/blog/2012/05/08/reducers-a-library-and-model-for-collection-processing.html
 //This is Nick Palladinos' F# impementation of Clojure's Reducers, http://fssnip.net/ip
 
-open Prelude.Parallel
+//open Prelude.Parallel
  
 open System 
 open System.Text

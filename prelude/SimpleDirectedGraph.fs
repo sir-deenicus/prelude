@@ -123,7 +123,7 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
             let dir = if (defaultArg domax false) then -1. else 1.
             let currentCut = Hashset(edges.Keys)
             let root = currentCut |> Seq.head
-            let tree = WeightedGraph()
+            let tree = WeightedDirectedGraph()
             let fs = Collections.Generic.SortedSet() 
 
             let  _, _, steps =
