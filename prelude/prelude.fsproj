@@ -1,9 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.1;netstandard2.0;net45</TargetFrameworks>
+    <TargetFrameworks>netcoreapp2.0;netstandard2.0;net45</TargetFrameworks>
+    <Company />
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Authors>Deen Abiola</Authors>
+    <Description>Set of useful Fsharp utility functions.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="pseq.fs" />
     <Compile Include="prelude.fs" />
     <Compile Include="math.fs" />
     <Compile Include="onlinelearning.fs" />
