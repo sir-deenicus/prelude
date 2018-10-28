@@ -176,7 +176,7 @@ let rec dispTreeGeneric d maxDepth (fg:FastStringGraph) (visited:Set<string>) da
                                   (spaces + "|  ") 
                                   e))
 
-         dashes + node + "\n" + (children |> joinToStringWith newLine) 
+         dashes + node + "\n" + (children |> Strings.joinToStringWith Strings.newLine) 
 
 ///renders a graph that is a tree as a string.
 let dispStringTree d maxDepth g node = dispTreeGeneric d maxDepth g Set.empty "-" " " node

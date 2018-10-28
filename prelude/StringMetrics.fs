@@ -2,6 +2,7 @@
 
 open System
 open Prelude.Common
+open Strings
 
 let inline bithamming zero one (a:^a) (b:^a) =  
     let rec countbits dist = function

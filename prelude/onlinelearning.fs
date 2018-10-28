@@ -34,7 +34,7 @@ let regressAvgStream alpha h op (xs : float []) (y:float) weightXavgWeigths =
     for j in 0..(ws.Length - 1) do 
         ws.[j] <- op ws.[j] (alpha * e * xs.[j])  
         let m, c = avgws.[j]
-        avgws.[j] <- online_mean m c ws.[j]            
+        avgws.[j] <- Stats.online_mean m c ws.[j]            
     (ws,avgws),e
 
 type AvgPerceptronState = {

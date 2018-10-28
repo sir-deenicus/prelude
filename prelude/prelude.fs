@@ -151,7 +151,14 @@ let (|Double|String|Int|) s =
        match testDouble s with
         | Some f -> Double f
         | None -> String s 
-         
+ 
+
+module Option =
+ let getDef def x = match x with Some n -> n | None -> def
+ let liftNull x = if x = null then None else Some x
+ let mapNull f x = if x = null then None else Some (f x)
+ let forAllNotEmpty f = function None -> false | Some x ->  f x
+ 
 //////////////////FUNCTIONS//////////
 
 let inline curry2 f a b = f(a,b)
@@ -242,15 +249,8 @@ let mapFilterTrunc n f cond (seqs: 'a seq) =
 let filterMap cond f seqs = seq {for el in seqs do if cond el then yield f el} 
 
 let mapFilter f cond seqs = seq {for el in seqs do let mapped = f el in if cond mapped then yield mapped} 
-
-let inline contains c l = Seq.exists (fun item -> item = c) l 
-
+ 
 let inline containsOne (matchtries:'a Set) lelist = Seq.exists (fun item -> matchtries.Contains item) lelist
-
-let swapArr i j (arr:'a[]) =
-    let k = arr.[i]
-    arr.[i] <- arr.[j]
-    arr.[j] <- k
 
 ///////////TUPLES///////////////
 
@@ -299,12 +299,11 @@ let snd_third (_,b,c) = b,c
 let third_fourth (_,_,c,d) = c,d
 
 //////////////////MAPS/////////////////////////////////
-
-// add to a map item a with f to alter a as key and an alter of vlue with initial i
-
+ 
 let keyValueToKey (kv:KeyValuePair<_,_>) = kv.Key
 let keyValueToValue (kv:KeyValuePair<_,_>) = kv.Value  
 let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value  
+let keyValueSeqtoPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray
 
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
@@ -360,23 +359,6 @@ type Dictionary<'a,'b>  with
        x <- f x k v 
      x
         
-let mapAddGeneric map key f initial = 
-   match Map.tryFind key map with 
-    | Some item -> Map.add key (f item) map
-    | None -> Map.add key initial map
-
-let inline mapAddOne map key = mapAddGeneric map key ((+) 1.) 1.
-
-let inline mapGet map key defaultValue = match Map.tryFind key map with Some item -> item | None -> defaultValue
- 
-
-let inline mapGetAdd map key defaultValue =  
-   match Map.tryFind key map with
-     | Some item -> item, map 
-     | None -> defaultValue, map.Add(key, defaultValue) 
-
-let keyValueSeqtoPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray 
-
 type IDictionary<'k,'v> with
    ///in combine, the first element is the source dictionary's and the other is the other's
    member t.MergeWith combine otherDict = 
@@ -391,20 +373,36 @@ type IDictionary<'k,'v> with
         if not isin then t.Add(key,item)  
 
 module Map =
-    let inline sum m = m |> Map.fold (curryfst (+)) Unchecked.defaultof<'a>
-    let inline normalize (m : Map<'a, 'b>) = 
-      let total = sum m
-      Map.map (fun _ v -> v / total) m
-    let mapGetflip themap = flip (mapGet themap)  
+  let inline sum m = m |> Map.fold (curryfst (+)) Unchecked.defaultof<'a>
+  let addGeneric map key f initial = 
+      match Map.tryFind key map with 
+      | Some item -> Map.add key (f item) map
+      | None -> Map.add key initial map
 
-    ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
-    ///it is clear that the function will run more efficiently
-    let merge combine wrap smallermap biggermap = 
-      smallermap |> Map.fold (fun newmap key value -> 
-                                   mapAddGeneric newmap key (combine value) (wrap value))
-                                   biggermap
+  let inline addOne map key = addGeneric map key ((+) 1.) 1.
+
+  let inline defGet map key defaultValue = match Map.tryFind key map with Some item -> item | None -> defaultValue
  
-    let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
+
+  let inline getAdd map key defaultValue =  
+     match Map.tryFind key map with
+       | Some item -> item, map 
+       | None -> defaultValue, map.Add(key, defaultValue)  
+
+  let inline normalize (m : Map<'a, 'b>) = 
+    let total = sum m
+    Map.map (fun _ v -> v / total) m
+  
+  let flippedGet themap = flip (defGet themap)  
+
+  ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
+  ///it is clear that the function will run more efficiently
+  let merge combine wrap smallermap biggermap = 
+    smallermap |> Map.fold (fun newmap key value -> 
+                      addGeneric newmap key (combine value) (wrap value))
+                      biggermap
+ 
+  let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
 /////////////////////ARRAY AND ARRAY 2D useful utilites//////////////
 
@@ -440,11 +438,11 @@ type Array with
   static member inline lastElement (a:'a []) = a.[a.Length - 1]
   static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
   static member inline get2 loc (a:'a[]) = a.[loc] 
-  static member inline countElements array = array |> Array.fold mapAddOne Map.empty 
+  static member inline countElements array = array |> Array.fold Map.addOne Map.empty 
   static member countElementsMapThenFilter f filter array = 
        array |> Array.fold (fun counts item -> 
                             let item' = f item 
-                            if filter item' then mapAddOne counts item' else counts) Map.empty
+                            if filter item' then Map.addOne counts item' else counts) Map.empty
 
   static member countAndMax array =  
      let counts = array |> Array.countElements 
@@ -467,14 +465,12 @@ type Array with
     let take = int(float(array.Length) * p)
     array.[0..take], array.[take+1..array.Length-1] 
 
-module Option =
- let getDef def x = match x with Some n -> n | None -> def
- let liftNull x = if x = null then None else Some x
- let mapNull f x = if x = null then None else Some (f x)
- let forAllNotEmpty f = function None -> false | Some x ->  f x
-
 module Array =         
     let sub3 n (a:'a[]) = a.[min n (a.Length - 1)..]
+    let swapAtIndex i j (arr:'a[]) =
+        let k = arr.[i]
+        arr.[i] <- arr.[j]
+        arr.[j] <- k
 
     let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> arr.[row].[col]|] 
     
@@ -579,183 +575,17 @@ module Array2D =
   
   let fold f seed (m:'a[,]) = m |> foldGen 1 f seed
 
-///isParallel
-let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i]) 
-///isParallel  
-let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
+  ///isParallel
+  let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i]) 
+  ///isParallel  
+  let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
                 
 /////////////////////////////STRINGS////////////////////
-//These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
-//not worth it for more general code
-let removeExtraSpaces (s:string) = 
-      let sb = Text.StringBuilder()
-      s |> Seq.fold (fun waslastspace curchar -> 
-                       if curchar = ' ' && waslastspace = true then true 
-                       else sb.Append(curchar) |> ignore
-                            curchar = ' ') false |> ignore
-      sb.ToString().Trim()
 
-let removeExtraChar (charToStrip:char) (s:string) = 
-      let sb = Text.StringBuilder()
-      s |> Seq.fold ( fun waslastX curchar ->  
-                       if curchar = charToStrip && waslastX = true then true 
-                       else sb.Append(curchar) |> ignore
-                            curchar = charToStrip) false |> ignore
-      sb.ToString().Trim()
-
-let removeExtraChars (charsToStrip:char Set) (s:string) = 
-      let sb = Text.StringBuilder()
-      s |> Seq.fold ( fun waslastX curchar ->  
-                       let skipchar = charsToStrip.Contains curchar 
-                       if skipchar && waslastX = true then true 
-                       else sb.Append(curchar) |> ignore
-                            skipchar) false |> ignore
-      sb.ToString().Trim()
-//-------------
-let newLine = Environment.NewLine
-
-let DocumentsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-
-let inline joinToStringWith (sep:string) (s:'a seq) = String.Join(sep, s)
-
-let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
-
-let inline joinToString s = joinToStringWith "" s
-
-///=  [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
-let splitterchars =  [|' '; ',' ; '\t'; '?'; ':' ;'–'; ';' ; '!' ; '|';  '\010';  '\\' ; '\"' ; '(' ; ')'; '\000'; '\r'; '\n'; '—';'[';']';'“';'”'|]
-
-let inline trim (str: string) = str.Trim()
-
-///trims with passed array, variable superflouschars provides: ' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'
-let trimWith (charsToTrim:_[]) (s:string) = s.Trim(charsToTrim)
-
-///charArr (s:string) = s.ToCharArray()
-let inline char_array (s:string) = s.ToCharArray()
-
-let inline splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
-
-let inline splitstrWithSpace (str : string) = str.Split([|" "|], StringSplitOptions.RemoveEmptyEntries) 
-
-let inline splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, @"(?<=(?<![\d.\d])[\n.?!])")
-
-let slpitStrs = [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
- 
-///Note...does not split periods. Splits to words using the following characters: [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
-let splitToWords = splitstr slpitStrs
-///Like regular splitToWords but eliminates periods while using a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
-let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;\–!#\|\010/\\""()\000\n—\[\]“\>\<”]") |> Array.filterMap ((<>) "") (trimWith splitterchars)
-
-let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
-
-let inline splitRegExKeepSplitters splitters s = 
-    System.Text.RegularExpressions.Regex.Split(s, sprintf @"(?<=[%s])" splitters)
-
-let inline splitregEx splitters s = 
-    System.Text.RegularExpressions.Regex.Split(s, splitters)
-
-let inline tolower (str:string) = str.ToLower()
-
-let inline toupper (str:string) = str.ToUpper()
-
-let (|LowerCase|) s = tolower s
-
-let (|UpperCase|) s = toupper s
-
-let inline replace (unwantedstr:string) replacement (str:string) = str.Replace(unwantedstr,replacement)
-
-let inline replace2 replacement (str:string) (unwantedstr:string) = str.Replace(unwantedstr,replacement)
-
-///true when [sub]string is contained in [s]tring
-let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
-
-///true when [sub]string is contained in [s]tring
-let inline strcontains_raw (sub:string) (s:string) = s.Contains(sub)
-
-///true when [sub]string is contained in [s]tring, no trim
-let inline containedinStrRaw (sub:string) (s:string) = s.Contains(sub)
-
-///true when [sub]string is contained in [s]tring
-let inline containedinStr (s:string) (sub:string) = s.Contains(trim sub)
-
-let strContainsAll testStrings str = testStrings |> Array.forall (containedinStr str) 
-
-let strContainsNof n (testStrings:string[]) (str:string) =
-   recurse fst4
-           (fun (_,_,i,m) ->
-              let within = str.Contains testStrings.[i]
-              let m' = if within then m+1 else m
-              let satisfied = m' >= n && within
-              satisfied || i=testStrings.Length-1, satisfied, i + 1, m') 
-           (false,false,0,0) |> snd4      
-
-let (|StrContains|_|) (testString:string) (str : string) = 
-   if str.Contains(testString) then Some(true) else None  
-
-let (|StrContainsOneOf|_|) (testStrings) str = testStrings |> Seq.tryFind (containedinStr str) 
-      
-let (|StrContainsAllRemove|_|) (testStrings : string[]) str = 
-     
-    nestifMaybe {
-         let! pass = testStrings |> Array.forall (containedinStr str) 
-         return (testStrings |> Array.fold (replace2 "") str)}
-
-let (|StrContainsAll|_|) (testStrings : string[]) str = 
-    nestifMaybe {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
-
-let (|StrContainsRemove|_|) (t:string) (str : string) = 
-   if str.Contains(t) then Some(str.Replace(t,"")) else None 
-
-let (|StrContainsGroupRegEx|_|) t (str : string) = 
-   if Text.RegularExpressions.Regex.IsMatch(str, t) then 
-      let groups = Text.RegularExpressions.Regex.Match(str, t)
-      Some([|for g in groups.Groups -> g.Value|]) else None 
-
-let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
-
-let inline strContainsOneOfRaw testStrings str = testStrings |> Array.tryFind (containedinStrRaw str)  |> Option.isSome 
-
-let splitwSpace = splitstr [|" "|] 
-
-let splitstrWith s = splitstr [| s |]
-
-let splitstrKeepEmptyWith (splitters:string) (s:string) = s.Split([| splitters |], StringSplitOptions.None)
-
-let splitSentenceManual (s:string) = 
-   let sb = Text.StringBuilder()
-   let slist = MutableList()
-   let strmax = s.Length - 1
-   let strmaxless1 = strmax - 1
-  
-   for n in 0..strmax do 
-      let c = s.[n]                                                
-      if c = '?' || c = '!'  || c = '\n' 
-                 || (c = '\r' && n < strmax && s.[n + 1] <> '\n')   
-                 || (c = '.' && n > 0 
-                             && not (Char.IsDigit s.[n - 1])    
-                             && not (Char.IsUpper c && s.[n-1] = ' ')                               
-                             && n > 1  
-                             && n < strmax            
-                             && not (Char.IsDigit s.[n+1])        
-                             && (not (Char.IsLetterOrDigit s.[n+1]) || Char.IsUpper s.[n+1])
-                             && n < strmaxless1 //2 before the end 
-                             && (not(Char.IsUpper s.[n-2]) || Char.IsUpper(s.[n+2]))
-                             && (s.[n-2] <> '.' ) //can only look 2 back for a period if next is not capitalized. actually strike that. consider names...hope no one ends sentences with initials
-                             && s.[n+2] <> '.' )
-         then 
-         if not(c = '\r' || c = '\n') then sb.Append c |> ignore
-         if sb.Length > 0 then slist.Add(sb.ToString())
-         let _ = sb.Clear() 
-         ()
-      else   
-         sb.Append c |> ignore 
-
-   if sb.Length > 0 then slist.Add(sb.ToString())
-   slist.ToArray()  
-    
-
+//-------------  
 type String with
-   member t.splitbystr ([<ParamArray>] splitbys : string[]) = splitstr splitbys t
+   member __.splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
+   member t.splitbystr ([<ParamArray>] splitbys : string[]) = t.splitstr splitbys t
 
    member s.Last = s.[s.Length - 1]
    
@@ -767,128 +597,293 @@ type String with
 
    member s.getBytes () = System.Text.Encoding.Unicode.GetBytes(s) 
 
-module String =  
-    let removeSymbols s = s |> Seq.filter (Char.IsSymbol >> not) |> joinToString
-    let splitKeepQuotes txt = Text.RegularExpressions.Regex.Split(txt, """("[^"]+"|[^"\s]+)""") |> Array.filter (trim >> (<>) "")
+module Strings = 
+  let inline splitstr (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
+    //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
+  //not worth it for more general code
+  let removeExtraSpaces (s:string) = 
+        let sb = Text.StringBuilder()
+        s |> Seq.fold (fun waslastspace curchar -> 
+                         if curchar = ' ' && waslastspace = true then true 
+                         else sb.Append(curchar) |> ignore
+                              curchar = ' ') false |> ignore
+        sb.ToString().Trim()
 
-    let toUTF8Bytes (s:string) = 
-      let b = System.Text.Encoding.Unicode.GetBytes(s)
-      System.Text.Encoding.Convert(System.Text.Encoding.Unicode, System.Text.Encoding.UTF8, b)
+  let removeExtraChar (charToStrip:char) (s:string) = 
+        let sb = Text.StringBuilder()
+        s |> Seq.fold ( fun waslastX curchar ->  
+                         if curchar = charToStrip && waslastX = true then true 
+                         else sb.Append(curchar) |> ignore
+                              curchar = charToStrip) false |> ignore
+        sb.ToString().Trim()
 
-    let getBytes (s:string) = System.Text.Encoding.Unicode.GetBytes(s)  
+  let removeExtraChars (charsToStrip:char Set) (s:string) = 
+        let sb = Text.StringBuilder()
+        s |> Seq.fold ( fun waslastX curchar ->  
+                         let skipchar = charsToStrip.Contains curchar 
+                         if skipchar && waslastX = true then true 
+                         else sb.Append(curchar) |> ignore
+                              skipchar) false |> ignore
+        sb.ToString().Trim()
+  let newLine = Environment.NewLine
 
-    ///s.ToCharArray() |> Array.map string 
-    let inline letters (s:string) = s.ToCharArray() |> Array.map string  
-    
-    let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
-  
-    let normalizeCapitilization (s:string) =  s |> String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
+  let inline joinToStringWith (sep:string) (s:'a seq) = String.Join(sep, s)
 
-    let suffix n (s:string) = s.[max 0 (s.Length - n)..] 
-  
-    ///zlenstr is the string returned if s = ""
-    let prefix zlenstr n (s:string) = if s.Length = 0 then zlenstr else s.[..min (s.Length - 1) n] 
+  let inline joinToStringWithSpace (s:'a seq) = String.Join(" ", s)
 
-    let padcut padlen (s:string) = 
-       let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s + "  "
-       usestr |> pad padlen
+  let inline joinToString s = joinToStringWith "" s
 
-    let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
-  
-    let replaceRegEx (patternstring:string) (replacestring:string) (inputstring:string) = 
-        Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring)  
+  ///=  [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
+  let splitterchars =  [|' '; ',' ; '\t'; '?'; ':' ;'–'; ';' ; '!' ; '|';  '\010';  '\\' ; '\"' ; '(' ; ')'; '\000'; '\r'; '\n'; '—';'[';']';'“';'”'|]
 
-    let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
-        Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
+  let inline trim (str: string) = str.Trim()
 
-    let replaceTheseGen splitfunc (f:string -> string) (items:Hashset<string>) str = 
-        let spacedstr = str |> splitfunc
-        let sbuilder = Text.StringBuilder()
+  ///trims with passed array, variable superflouschars provides: ' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'
+  let trimWith (charsToTrim:_[]) (s:string) = s.Trim(charsToTrim)
 
-        spacedstr |> Array.iter (fun w -> if items.Contains w then 
-                                               let _ = sbuilder.Append (f w)
-                                               sbuilder.Append " " |> ignore
-                                          else sbuilder.Append w |> ignore
-                                               sbuilder.Append " "  |> ignore
-                                          ()) 
-        sbuilder.ToString()   
+  ///charArr (s:string) = s.ToCharArray()
+  let inline char_array (s:string) = s.ToCharArray()  
 
-    ///takes a set of words and replaces those words with supplied function
-    let replaceThese f = replaceTheseGen splitstrWithSpace f
+  let inline splitstrWithSpace (str : string) = str.Split([|" "|], StringSplitOptions.RemoveEmptyEntries) 
 
-    ///convenience function to multiply replace within a string. Uses string.replace
-    let replaceMultiple words str = words |> Seq.fold (fun nstr (w,repw) -> if w = "" then nstr else nstr |> replace w repw) str
-    
-    ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
-    let transformMultiple f words str = words |> Array.fold (fun nstr w -> nstr |> replace w (f w)) str
-    
-    ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
-    let transformMultipleNoCase f words str = words |> Array.fold (fun nstr w -> nstr |> replaceRegExIngoresCase w (f w)) str
-     
-    let uncapitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToLower c else c)
-  
-    let capitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
+  let inline splitSentenceRegEx s = System.Text.RegularExpressions.Regex.Split(s, @"(?<=(?<![\d.\d])[\n.?!])")
 
-    let capitilizebySpace minlen s = s |> splitwSpace |> Array.mapi (fun i s -> if i = 0 || s.Length > minlen then s |> capitalizeFirstWord else s) |> joinToStringWithSpace
+  let slpitStrs = [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
  
-    let DecodeFromUtf8Bytes (utf8Bytes:byte []) =  
-        System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length)  
+  ///Note...does not split periods. Splits to words using the following characters: [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
+  let splitToWords = splitstr slpitStrs
+  ///Like regular splitToWords but eliminates periods while using a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
+  let inline splitToWordsRegEx s = Text.RegularExpressions.Regex.Split(s, @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;\–!#\|\010/\\""()\000\n—\[\]“\>\<”]") |> Array.filterMap ((<>) "") (trimWith splitterchars)
 
-    let decodeFromUnicode (stringbytes : byte[]) = Text.Encoding.Unicode.GetString stringbytes
+  let inline splitstrDontRemove (splitby : string[]) (str : string) = str.Split(splitby, StringSplitOptions.None) 
 
-    let DecodeFromUtf8 (utf8String:string) = 
-        // copy the string as UTF-8 bytes. 
-        let utf8Bytes = [|for c in utf8String -> byte c|]
-        System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
+  let inline splitRegExKeepSplitters splitters s = 
+      System.Text.RegularExpressions.Regex.Split(s, sprintf @"(?<=[%s])" splitters)
 
-    let seperateStringByCaps (s:string) = 
-     let outString = Text.StringBuilder()
-     for c in s do
-       ignore <| 
-         if Char.IsUpper c then ignore <| outString.Append(' '); outString.Append(c)
-         else outString.Append c
-     outString.ToString() 
+  let inline splitregEx splitters s = 
+      System.Text.RegularExpressions.Regex.Split(s, splitters)
+
+  let inline tolower (str:string) = str.ToLower()
+
+  let inline toupper (str:string) = str.ToUpper()
+
+  let (|LowerCase|) s = tolower s
+
+  let (|UpperCase|) s = toupper s
+
+  let inline replace (unwantedstr:string) replacement (str:string) = str.Replace(unwantedstr,replacement)
+
+  let inline replace2 replacement (str:string) (unwantedstr:string) = str.Replace(unwantedstr,replacement)
+
+  ///true when [sub]string is contained in [s]tring
+  let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
+
+  ///true when [sub]string is contained in [s]tring
+  let inline strcontains_raw (sub:string) (s:string) = s.Contains(sub)
+
+  ///true when [sub]string is contained in [s]tring, no trim
+  let inline containedinStrRaw (sub:string) (s:string) = s.Contains(sub)
+
+  ///true when [sub]string is contained in [s]tring
+  let inline containedinStr (s:string) (sub:string) = s.Contains(trim sub)
+
+  let strContainsAll testStrings str = testStrings |> Array.forall (containedinStr str) 
+
+  let strContainsNof n (testStrings:string[]) (str:string) =
+     recurse fst4
+             (fun (_,_,i,m) ->
+                let within = str.Contains testStrings.[i]
+                let m' = if within then m+1 else m
+                let satisfied = m' >= n && within
+                satisfied || i=testStrings.Length-1, satisfied, i + 1, m') 
+             (false,false,0,0) |> snd4      
+
+  let (|StrContains|_|) (testString:string) (str : string) = 
+     if str.Contains(testString) then Some(true) else None  
+
+  let (|StrContainsOneOf|_|) (testStrings) str = testStrings |> Seq.tryFind (containedinStr str) 
+      
+  let (|StrContainsAllRemove|_|) (testStrings : string[]) str = 
+     
+      nestifMaybe {
+           let! pass = testStrings |> Array.forall (containedinStr str) 
+           return (testStrings |> Array.fold (replace2 "") str)}
+
+  let (|StrContainsAll|_|) (testStrings : string[]) str = 
+      nestifMaybe {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
+
+  let (|StrContainsRemove|_|) (t:string) (str : string) = 
+     if str.Contains(t) then Some(str.Replace(t,"")) else None 
+
+  let (|StrContainsGroupRegEx|_|) t (str : string) = 
+     if Text.RegularExpressions.Regex.IsMatch(str, t) then 
+        let groups = Text.RegularExpressions.Regex.Match(str, t)
+        Some([|for g in groups.Groups -> g.Value|]) else None 
+
+  let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
+
+  let inline strContainsOneOfRaw testStrings str = testStrings |> Array.tryFind (containedinStrRaw str)  |> Option.isSome 
+
+  let splitwSpace = splitstr [|" "|] 
+
+  let splitstrWith s = splitstr [| s |]
+
+  let splitstrKeepEmptyWith (splitters:string) (s:string) = s.Split([| splitters |], StringSplitOptions.None)
+
+  let splitSentenceManual (s:string) = 
+     let sb = Text.StringBuilder()
+     let slist = MutableList()
+     let strmax = s.Length - 1
+     let strmaxless1 = strmax - 1
+  
+     for n in 0..strmax do 
+        let c = s.[n]                                                
+        if c = '?' || c = '!'  || c = '\n' 
+                   || (c = '\r' && n < strmax && s.[n + 1] <> '\n')   
+                   || (c = '.' && n > 0 
+                               && not (Char.IsDigit s.[n - 1])    
+                               && not (Char.IsUpper c && s.[n-1] = ' ')                               
+                               && n > 1  
+                               && n < strmax            
+                               && not (Char.IsDigit s.[n+1])        
+                               && (not (Char.IsLetterOrDigit s.[n+1]) || Char.IsUpper s.[n+1])
+                               && n < strmaxless1 //2 before the end 
+                               && (not(Char.IsUpper s.[n-2]) || Char.IsUpper(s.[n+2]))
+                               && (s.[n-2] <> '.' ) //can only look 2 back for a period if next is not capitalized. actually strike that. consider names...hope no one ends sentences with initials
+                               && s.[n+2] <> '.' )
+           then 
+           if not(c = '\r' || c = '\n') then sb.Append c |> ignore
+           if sb.Length > 0 then slist.Add(sb.ToString())
+           let _ = sb.Clear() 
+           ()
+        else   
+           sb.Append c |> ignore 
+
+     if sb.Length > 0 then slist.Add(sb.ToString())
+     slist.ToArray()  
+    
+
+  let removeSymbols s = s |> Seq.filter (Char.IsSymbol >> not) |> joinToString
+  let splitKeepQuotes txt = Text.RegularExpressions.Regex.Split(txt, """("[^"]+"|[^"\s]+)""") |> Array.filter (trim >> (<>) "")
+
+  let toUTF8Bytes (s:string) = 
+    let b = System.Text.Encoding.Unicode.GetBytes(s)
+    System.Text.Encoding.Convert(System.Text.Encoding.Unicode, System.Text.Encoding.UTF8, b)
+
+  let getBytes (s:string) = System.Text.Encoding.Unicode.GetBytes(s)  
+
+  ///s.ToCharArray() |> Array.map string 
+  let inline letters (s:string) = s.ToCharArray() |> Array.map string  
+    
+  let pad padlen (s:string) = s + String.replicate (max 0 (padlen - s.Length)) " "
+  
+  let normalizeCapitilization (s:string) =  s |> String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
+
+  let suffix n (s:string) = s.[max 0 (s.Length - n)..] 
+  
+  ///zlenstr is the string returned if s = ""
+  let prefix zlenstr n (s:string) = if s.Length = 0 then zlenstr else s.[..min (s.Length - 1) n] 
+
+  let padcut padlen (s:string) = 
+      let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s + "  "
+      usestr |> pad padlen
+
+  let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
+  
+  let replaceRegEx (patternstring:string) (replacestring:string) (inputstring:string) = 
+      Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring)  
+
+  let replaceRegExIngoresCase (patternstring:string) (replacestring:string) (inputstring:string) = 
+      Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring, Text.RegularExpressions.RegexOptions.IgnoreCase)  
+
+  let replaceTheseGen splitfunc (f:string -> string) (items:Hashset<string>) str = 
+      let spacedstr = str |> splitfunc
+      let sbuilder = Text.StringBuilder()
+
+      spacedstr |> Array.iter (fun w -> if items.Contains w then 
+                                            let _ = sbuilder.Append (f w)
+                                            sbuilder.Append " " |> ignore
+                                        else sbuilder.Append w |> ignore
+                                             sbuilder.Append " "  |> ignore
+                                        ()) 
+      sbuilder.ToString()   
+
+  ///takes a set of words and replaces those words with supplied function
+  let replaceThese f = replaceTheseGen splitstrWithSpace f
+
+  ///convenience function to multiply replace within a string. Uses string.replace
+  let replaceMultiple words str = words |> Seq.fold (fun nstr (w,repw) -> if w = "" then nstr else nstr |> replace w repw) str
+    
+  ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
+  let transformMultiple f words str = words |> Array.fold (fun nstr w -> nstr |> replace w (f w)) str
+    
+  ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
+  let transformMultipleNoCase f words str = words |> Array.fold (fun nstr w -> nstr |> replaceRegExIngoresCase w (f w)) str
+     
+  let uncapitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToLower c else c)
+  
+  let capitalizeFirstWord = String.mapi (fun i c -> if i = 0 then Char.ToUpper c else c)
+
+  let capitilizebySpace minlen s = s |> splitwSpace |> Array.mapi (fun i s -> if i = 0 || s.Length > minlen then s |> capitalizeFirstWord else s) |> joinToStringWithSpace
+ 
+  let DecodeFromUtf8Bytes (utf8Bytes:byte []) =  
+      System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length)  
+
+  let decodeFromUnicode (stringbytes : byte[]) = Text.Encoding.Unicode.GetString stringbytes
+
+  let DecodeFromUtf8 (utf8String:string) = 
+      // copy the string as UTF-8 bytes. 
+      let utf8Bytes = [|for c in utf8String -> byte c|]
+      System.Text.Encoding.UTF8.GetString(utf8Bytes,0,utf8Bytes.Length) 
+
+  let seperateStringByCaps (s:string) = 
+    let outString = Text.StringBuilder()
+    for c in s do
+      ignore <| 
+        if Char.IsUpper c then ignore <| outString.Append(' '); outString.Append(c)
+        else outString.Append c
+    outString.ToString() 
    
-    let findIndexi isForwards f i s = 
-         let len = String.length s
-         if i < 0 || i >= len then None 
-         else recurse fst3
-                      (fun (_, j, _) ->
-                         let found = f j s.[j]              
-                         found || (if isForwards then (j+1) >= len else (j-1) < 0),
-                         (if isForwards then j + 1 else j - 1), 
-                         (if found then Some j else None))
-                      (false, i, None)  
-                      |> third  
+  let findIndexi isForwards f i s = 
+        let len = String.length s
+        if i < 0 || i >= len then None 
+        else recurse fst3
+                    (fun (_, j, _) ->
+                        let found = f j s.[j]              
+                        found || (if isForwards then (j+1) >= len else (j-1) < 0),
+                        (if isForwards then j + 1 else j - 1), 
+                        (if found then Some j else None))
+                    (false, i, None)  
+                    |> third  
 
-///very simple heuristic
-let splitToParagraphs singlebreak (s:string) = if singlebreak then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
+  ///very simple heuristic
+  let splitToParagraphs singlebreak (s:string) = if singlebreak then s.splitbystr("\n", "\r\n", "\r") else s.splitbystr("\n\n", "\r\n\r\n", "\r\r") 
 
-let removeExtrasOfString (strToStrip:string) (s:string) = 
-     s.splitbystr (strToStrip) |> joinToStringWith strToStrip 
+  let removeExtrasOfString (strToStrip:string) (s:string) = 
+       s.splitbystr (strToStrip) |> joinToStringWith strToStrip 
                                                        
-let findSentenceTerminus lookforward numtake i s = 
-  let strmax = String.length s - 1
-  if lookforward && i = strmax || not lookforward && i = 0 then (0,[])
-  else recurse fst3
-          (fun (_,(seen,seens),n) ->        
-            let found =
-              if n < 0 || n >= strmax then false
-              else let c = s.[n]  
-                   c = '?' || c = '!'  || c = '\n' 
-                          || (c = '\r' && n < strmax && s.[n + 1] <> '\n') 
-                          || (c = '.' && n > 0 
-                                      && not (Char.IsDigit s.[n - 1]) 
-                                      && (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
-                                      && n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
-                                              && not(s.[n-2] = 'w' && s.[n-1] = 'w')
-                                      && n < strmax - 1 && s.[n+2] <> '.'
-                                      && n < strmax - 2 && not(s.[n+3] = 'f' && s.[n+2] = 'd'&& s.[n+1] = 'p') 
-                                                        && not(s.[n+3] = 'm' && s.[n+2] = 't' && s.[n+1] = 'h'))
+  let findSentenceTerminus lookforward numtake i s = 
+    let strmax = String.length s - 1
+    if lookforward && i = strmax || not lookforward && i = 0 then (0,[])
+    else recurse fst3
+            (fun (_,(seen,seens),n) ->        
+              let found =
+                if n < 0 || n >= strmax then false
+                else let c = s.[n]  
+                     c = '?' || c = '!'  || c = '\n' 
+                            || (c = '\r' && n < strmax && s.[n + 1] <> '\n') 
+                            || (c = '.' && n > 0 
+                                        && not (Char.IsDigit s.[n - 1]) 
+                                        && (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
+                                        && n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
+                                                && not(s.[n-2] = 'w' && s.[n-1] = 'w')
+                                        && n < strmax - 1 && s.[n+2] <> '.'
+                                        && n < strmax - 2 && not(s.[n+3] = 'f' && s.[n+2] = 'd'&& s.[n+1] = 'p') 
+                                                          && not(s.[n+3] = 'm' && s.[n+2] = 't' && s.[n+1] = 'h'))
             
-            found && seen+1 = numtake || (if lookforward then n >= strmax else n < 0), 
-            (if found || (lookforward && n = strmax || n = 0 && not lookforward) then (seen + 1,n::seens) else (seen, seens)), 
-            (if lookforward then n + 1 else n - 1)) (false,(0,[]),i) |> snd3 
+              found && seen+1 = numtake || (if lookforward then n >= strmax else n < 0), 
+              (if found || (lookforward && n = strmax || n = 0 && not lookforward) then (seen + 1,n::seens) else (seen, seens)), 
+              (if lookforward then n + 1 else n - 1)) (false,(0,[]),i) |> snd3 
     
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
 
@@ -934,7 +929,7 @@ module Seq =
 
   let inline sortByDescendingLinq f (sequence : 'a seq) = sequence.OrderByDescending (System.Func<_,_> f)
  
-  let inline counts (v:seq<'a>) =  v |> Seq.fold mapAddOne Map.empty
+  let inline counts (v:seq<'a>) =  v |> Seq.fold Map.addOne Map.empty
 
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
@@ -1102,13 +1097,13 @@ module DateTime =
 
     dt.AddDays(-1 * (diff + wrap) |> float).Date
     
-let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1)).TotalSeconds 
+  let toUnixTime (dateTime: DateTime) = (dateTime.ToUniversalTime() -  DateTime(1970, 1, 1)).TotalSeconds 
 
-let fromUnixTime timestamp = DateTime(1970,1,1,0,0,0,0).AddSeconds( timestamp)
+  let fromUnixTime timestamp = DateTime(1970,1,1,0,0,0,0).AddSeconds( timestamp)
 
-let inline fromUnixTimeMilli timestamp = try DateTime(1970,1,1,0,0,0,0).AddSeconds(float timestamp / 1000.) with _ -> DateTime.MaxValue
+  let inline fromUnixTimeMilli timestamp = try DateTime(1970,1,1,0,0,0,0).AddSeconds(float timestamp / 1000.) with _ -> DateTime.MaxValue
 
-let fromUnixTimeMicroSec timestamp = DateTime(1970,1,1,0,0,0,0).AddMilliseconds(timestamp/1000.)
+  let fromUnixTimeMicroSec timestamp = DateTime(1970,1,1,0,0,0,0).AddMilliseconds(timestamp/1000.)
 
 //http://madskristensen.net/post/Generate-unique-strings-and-numbers-in-C.aspx
 let generateId () = 
@@ -1151,6 +1146,7 @@ let inline jenkinsOAThashGeneric (key: ^a []) =
 
 //////////////////////////////////
 
+let DocumentsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
 
 let pathCombine path1 path2 = IO.Path.Combine(path1, path2)
 
@@ -1169,10 +1165,10 @@ type IO.File with
          |> stream.WriteArray   
  
  ///'appends' to top of text file
- static member ReverseAppendUTF (fname:string) (txt:string) = IO.File.ReverseAppend fname String.getBytes String.decodeFromUnicode String.Concat txt
+ static member ReverseAppendUTF (fname:string) (txt:string) = IO.File.ReverseAppend fname Strings.getBytes Strings.decodeFromUnicode String.Concat txt
 
   ///'appends' to top of text file
- static member ReverseAppendUTF8 (fname:string) (txt:string) = IO.File.ReverseAppend fname String.toUTF8Bytes String.DecodeFromUtf8Bytes String.Concat txt
+ static member ReverseAppendUTF8 (fname:string) (txt:string) = IO.File.ReverseAppend fname Strings.toUTF8Bytes Strings.DecodeFromUtf8Bytes String.Concat txt
  
  static member ReadAllTextOrCreate(fname:string) =
      if IO.File.Exists(fname) then
@@ -1190,6 +1186,7 @@ type IO.File with
 
 ////////
 
+open Strings
 
 let tohtmlTableString headers d = 
     let entryFormat horD xs = xs |> Seq.map (fun x -> sprintf "<t%s>%s</t%s>" horD x horD) |> joinToStringWith newLine
