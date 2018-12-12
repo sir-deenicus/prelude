@@ -1063,10 +1063,7 @@ let hoursToText = function
    | h  -> 
       let totdays, hrs = numberAndDecimalParts (h/24.)
       toparts totdays hrs 24. " days " " hours"                                    
-                                    
 
-let totalhours (d1:DateTime) (d2:DateTime) = (d2 - d1).TotalHours
-let totaldays (d1:DateTime) (d2:DateTime) = (d2 - d1).TotalDays
 
 type DateTime with
    member dt.StartOfWeek( startOfWeek ) =      
@@ -1088,8 +1085,10 @@ type DateTime with
       else d.ToShortTimeString() + ", " + d.ToLongDateString()
 
 module DateTime = 
-  let ToLongDateShortTime (d:DateTime) = d.ToLongDateString () + ", " + d.ToShortTimeString()
- 
+  let ToLongDateShortTime (d:DateTime) = d.ToLongDateString () + ", " + d.ToShortTimeString() 
+
+  let totalhours (d1:DateTime) (d2:DateTime) = (d2 - d1).TotalHours
+  let totaldays (d1:DateTime) (d2:DateTime) = (d2 - d1).TotalDays
  
   let StartOfWeek (startOfWeek:DayOfWeek) (dt:DateTime) =
     let diff = int(dt.DayOfWeek - startOfWeek)

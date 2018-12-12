@@ -90,21 +90,21 @@ let dispTree f = foldTree ("",0)
                          (fun n l -> l |> List.fold (fun (s1,i1) (s2,i2) -> s1 + s2, max i1 i2) n)
 
 
-let rec weightedGraphToTree (fg:WeightedGraph<_>) (visited:Set<string>) (node:WeightPart<string>) = 
-    match (fg.GetEdges node.Vert) with 
-      | Some h when h.Count = 0 -> Node (node.Vert,node.Weight)  
-      | None -> Node (node.Vert,node.Weight)  
+let rec weightedGraphToTree (fg:WeightedGraph<_>) (visited:Set<string>) (node:WeightedNode<string>) = 
+    match (fg.GetEdges node.Node) with 
+      | Some h when h.Count = 0 -> Node (node.Node,node.Weight)  
+      | None -> Node (node.Node,node.Weight)  
       | Some edges  ->        
          let children = 
                 edges
                 |> Seq.toArray                  
                 |> Array.filterMap 
-                    (fun w -> w.Vert |> visited.Contains |> not) 
+                    (fun w -> w.Node |> visited.Contains |> not) 
                     (fun e -> 
-                        weightedGraphToTree fg (visited.Add node.Vert) (e))
+                        weightedGraphToTree fg (visited.Add node.Node) (e))
 
-         if children.Length = 0 then Node (node.Vert,node.Weight)  
-         else Branch ((node.Vert,node.Weight), List.ofArray children)
+         if children.Length = 0 then Node (node.Node,node.Weight)  
+         else Branch ((node.Node,node.Weight), List.ofArray children)
          
 
 let rec depthFirstInsert f node = function
