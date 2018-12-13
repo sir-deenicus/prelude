@@ -7,78 +7,78 @@ open Prelude.SimpleGraphs
 
 
 type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights) = 
-    let mutable edges = Dict<'a, Hashset<WeightPart<'a>>>() 
+    let mutable edges = Dict<'a, Hashset<WeightedNode<'a>>>() 
     let mutable edgeWeights = Dict<struct('a * 'a), float>(HashIdentity.Structural)    
-    let track_weights = defaultArg trackweights false
-    
+    let track_weights = defaultArg trackweights false   
     
     member __.Clear() = edges.Clear(); edgeWeights.Clear()
     
-    member x.EdgeData = edges 
+    member g.EdgeData = edges 
     
-    member x.InsertRange (es,ews) = 
+    member g.InsertRange (es,ews) = 
         edges.Clear() 
         edges <- es
         edgeWeights.Clear() 
         edgeWeights <- ews
 
-    member x.InsertVertex(s:'a) =  
+    member g.InsertVertex(s:'a) =  
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s,Hashset()) 
         contained
 
-    member x.InEdges v =
+    member g.InEdges v =
         [|for (KeyValue(struct(a,b),_)) in edgeWeights do if b = v then yield (a,b) |]
     
-    member x.Remove(v:'a) = 
+    member g.Remove(v:'a) = 
        match (edges.tryFind v) with
         | None -> false
         | Some elist ->                                         
-           elist |> Seq.iter (fun ((weight_v2)) -> 
-                      let vert1,vert2 = (v,weight_v2.Vert)
+           for weightednode in elist do
+                      let vert1,vert2 = (v,weightednode.Node)
                       let node = struct (vert1,vert2)
                       match edgeWeights.tryFind node with 
                                | Some _ -> ignore <| edgeWeights.Remove node
-                               | _ -> ())
+                               | _ -> ()
 
            let removes = ResizeArray()
            for (KeyValue(struct(a,b) as node,w)) in edgeWeights do
              if b = v then
-                 edges.[a].Remove(WeightPart(w, b))
+                 edges.[a].Remove(WeightedNode(w, b))
                  removes.Add(node)
                  ()
            Seq.iter (fun n -> edgeWeights.Remove n |> ignore) removes
            edges.Remove v
 
            
-    member x.InsertEdge (v0,v1, w) =  
+    member g.InsertEdge (v0,v1, w) =  
        
         if not track_weights || not <| edgeWeights.ContainsKey (struct(v0,v1)) then
           maybe {
-          let! elist0 = edges.tryFind v0 
+            let! elist0 = edges.tryFind v0 
 
-          let added1 = elist0.Add (WeightPart(w, v1))
+            let added1 = elist0.Add (WeightedNode(w, v1))
         
-          let _ = if track_weights then ignore <| edgeWeights.ExpandElseAdd (struct(v0,v1)) id w else ()
-          return (added1)} else None
+            let _ = if track_weights then ignore <| edgeWeights.ExpandElseAdd (struct(v0,v1)) id w else ()
+            return (added1)} 
+        else None
 
-    member x.ContainsVertex v = edges.ContainsKey v 
+    member g.ContainsVertex v = edges.ContainsKey v 
     
-    member x.AdjustWeight f v1 v2 =
+    member g.AdjustWeight f v1 v2 =
         if track_weights then         
           maybe {
             let! w = match edgeWeights.tryFind (struct (v1,v2)) with 
                        | Some _ as w -> w 
-                       | _ -> x.InsertEdge(v1,v2,0.) |> ignore; Some 0.
+                       | _ -> g.InsertEdge(v1,v2,0.) |> ignore; Some 0.
                  
-            let v' = WeightPart(w,v2)
+            let v' = WeightedNode(w,v2)
            
             let elist0 = edges.[v1]    
 
             elist0.Remove(v') 
 
             let w' = f w
-            let adj1 = elist0.Add(WeightPart(w',v2))    
+            let adj1 = elist0.Add(WeightedNode(w',v2))    
         
             edgeWeights.[struct (v1,v2)] <- w'
         
@@ -87,39 +87,39 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
 
     member __.EdgeWeights = edgeWeights
 
-    member x.GetEdgeWeight v1 v2 =       
+    member g.GetEdgeWeight v1 v2 =       
         maybe {
         let! w = edgeWeights.tryFind (struct(v1,v2))
         return w} 
 
-    member x.ContainsEdge v1 v2 = 
+    member g.ContainsEdge v1 v2 = 
         maybe {
         let! elist0 = edges.tryFind v1 
         return (elist0.Contains v2)}  
 
-    member x.GetEdges v = 
+    member g.GetEdges v = 
         maybe {
          let! elist = edges.tryFind v  
          return elist }
 
-    member x.Edges = 
-      Hashset(x.EdgeData
+    member g.Edges = 
+      Hashset(g.EdgeData
               |> Seq.collect (fun (DictKV(k,v)) -> 
-                   v |> Seq.map (fun (w_v2) -> (k, w_v2.Vert), w_v2.Weight) 
+                   v |> Seq.map (fun (w_v2) -> (k, w_v2.Node), w_v2.Weight) 
                      |> Seq.toArray) 
               |> Seq.toArray) 
               |> Seq.toArray
 
-    member x.OrderedEdges =
+    member g.OrderedEdges =
       let sorted = Collections.Generic.SortedSet()    
-      x.EdgeData
+      g.EdgeData
       |> Seq.iter (fun (DictKV(k,v)) -> 
            v |> Seq.iter (fun (w_v2) -> 
-                  sorted.Add (WeightPart(w_v2.Weight, (k, w_v2.Vert))) 
+                  sorted.Add (WeightedNode(w_v2.Weight, (k, w_v2.Node))) 
                   |> ignore  )) 
       sorted
     ///if do max=true it does maximum spanning tree instead
-    member x.MinimumSpanningTree(?domax) = 
+    member g.MinimumSpanningTree(?domax) = 
             let dir = if (defaultArg domax false) then -1. else 1.
             let currentCut = Hashset(edges.Keys)
             let root = currentCut |> Seq.head
@@ -131,11 +131,10 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
                 (fun _ -> currentCut.Count = 0)
                 (fun (v, i, getnodes) ->   
                   if getnodes then                            
-                    edges.[v] 
-                    |> Seq.iter (fun (w_v2) ->                                           
-                        if currentCut.Contains w_v2.Vert || currentCut.Contains v then   
-                          ignore <| fs.Add (WeightPair(w_v2.Weight * dir,v,w_v2.Vert)) 
-                          ())
+                    for wnode in edges.[v] do                                          
+                        if currentCut.Contains wnode.Node || currentCut.Contains v then   
+                          ignore <| fs.Add (WeightPair(wnode.Weight * dir,v,wnode.Node)) 
+                          ()
 
                   if fs.Count = 0 then (currentCut |> Seq.head, i + 1, true)
                   else 
@@ -156,7 +155,7 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
                     else (v, i + 1, false)) (root, 0, true)    
             tree                         
   
-    member x.Vertices = Hashset(edges.Keys)  
+    member g.Vertices = Hashset(edges.Keys)  
     
     member g.dijkstra_full source = 
      let dists = Dict.ofSeq [source, 0.] 
@@ -182,14 +181,14 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
                 
         match adjs with 
           | None -> false
-          | Some vs ->  
-            vs |> Seq.iter (fun v2 -> 
-              if not (visited.Contains v2.Vert) then
-                let alt = dists.[next] + v2.Weight                               
-                if alt < dists.[v2.Vert] then 
-                  dists.[v2.Vert] <- alt
-                  prev.[v2.Vert] <- Some next
-                  FibHeap.decrease_key q nodeMap.[v2.Vert] alt)
+          | Some nodes ->  
+            for weightednode in nodes do
+              if not (visited.Contains weightednode.Node) then
+                let alt = dists.[next] + weightednode.Weight                               
+                if alt < dists.[weightednode.Node] then 
+                  dists.[weightednode.Node] <- alt
+                  prev.[weightednode.Node] <- Some next
+                  FibHeap.decrease_key q nodeMap.[weightednode.Node] alt
             false) (false) |> ignore
      dists, prev 
     
@@ -229,13 +228,13 @@ type WeightedDirectedGraph<'a when 'a: equality and 'a:comparison>(?trackweights
           match adjs with 
             | None -> false
             | Some vs ->  
-              vs |> Seq.iter (fun v2 -> 
-                if not (visited.Contains v2.Vert) then
-                  let alt = dists.[next] + v2.Weight                               
-                  if alt < dists.[v2.Vert] then 
-                    dists.[v2.Vert] <- alt
-                    prev.[v2.Vert] <- Some next
-                    FibHeap.decrease_key q nodeMap.[v2.Vert] alt)
+              for wnode in vs do
+                if not (visited.Contains wnode.Node) then
+                  let alt = dists.[next] + wnode.Weight                               
+                  if alt < dists.[wnode.Node] then 
+                    dists.[wnode.Node] <- alt
+                    prev.[wnode.Node] <- Some next
+                    FibHeap.decrease_key q nodeMap.[wnode.Node] alt
               false) (false) |> ignore  
       
      recurse (fst >> Option.isNone)
@@ -252,9 +251,9 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
     let rev_vertices = Dict<int,'a>()
 
 
-    member x.EdgeData = edges 
+    member g.EdgeData = edges 
     member __.GraphData = (edges,keyValueSeqtoPairArray vertices,keyValueSeqtoPairArray rev_vertices)
-    member x.InsertRange (es,vs,rvs) = 
+    member g.InsertRange (es,vs,rvs) = 
             edges.Clear()
             vertices.Clear()
             rev_vertices.Clear()
@@ -266,12 +265,12 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
     
     member __.Clear () = edges.Clear();vertices.Clear(); rev_vertices.Clear()
 
-    member x.ComputeReverseIndex() =
+    member g.ComputeReverseIndex() =
       rev_vertices.Clear()
       for (KeyValue(k,i2)) in vertices do
           rev_vertices.Add(i2,k) 
     
-    member x.InsertVertex(s:'a) =  
+    member g.InsertVertex(s:'a) =  
         let contained = vertices.ContainsKey s
         if not contained then 
             let count = vertices.Count
@@ -279,7 +278,7 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
             edges.Add(count,Dict()) 
         contained
     
-    member x.Remove(v:'a) = 
+    member g.Remove(v:'a) = 
        match (vertices.tryFind v) with
         | None -> false
         | Some i ->    
@@ -292,7 +291,7 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
            edges.Remove i
 
            
-    member x.InsertEdge (v0,v1, w) =  maybe {
+    member g.InsertEdge (v0,v1, w) =  maybe {
           let! i  = vertices.tryFind v0 
           let! i2 = vertices.tryFind v1
           let es = edges.[i]
@@ -300,9 +299,9 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
           return true}
                                       
 
-    member x.ContainsVertex v = vertices.ContainsKey v 
+    member g.ContainsVertex v = vertices.ContainsKey v 
     
-    member x.AdjustWeight f v1 v2 =
+    member g.AdjustWeight f v1 v2 =
                 
         maybe {           
            let! i  = vertices.tryFind v1
@@ -312,7 +311,7 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
            es.[i2] <- f old 
            return true}                     
 
-    member x.GetEdgeWeight v1 v2 =       
+    member g.GetEdgeWeight v1 v2 =       
         maybe {
            let! i = vertices.tryFind v1
            let es = edges.[i]
@@ -320,42 +319,42 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a: equality and 'a:comparison>
            let! w = es.tryFind i2 
            return w}  
 
-    member x.ContainsEdge v1 v2 = 
+    member g.ContainsEdge v1 v2 = 
         maybe {
           let! i  = vertices.tryFind v1 
           let! i2 = vertices.tryFind v2   
           return (edges.[i].ContainsKey i2)}  
 
-    member x.GetEdges v = 
+    member g.GetEdges v = 
         maybe {
          let! i = vertices.tryFind v          
          let es = edges.[i]
          let e = [|for (KeyValue(k,w)) in es -> rev_vertices.[k], w|]
          return e}  
 
-    member x.Edges = 
-      Hashset(x.EdgeData
+    member g.Edges = 
+      Hashset(g.EdgeData
               |> Seq.collect (fun (DictKV(k,v)) -> 
                    v |> Seq.map (fun (KeyValue(k2,w)) -> (rev_vertices.[k],rev_vertices.[k2]),w) 
                      |> Seq.toArray) 
               |> Seq.toArray) 
               |> Seq.toArray  
   
-    member x.Vertices = [| for kv in vertices -> kv.Key|]  
+    member g.Vertices = [| for kv in vertices -> kv.Key|]  
    
 
-type WeightedDirectedGraph2<'a, 'b when 'a: equality and 'a:comparison>() = 
+type WeightedDirectedGraphBasic<'a, 'b when 'a: equality and 'a:comparison>() = 
     let mutable edges = Dict<'a, Dict<'a, 'b>>() 
 
-    member x.EdgeData = edges 
-    member x.InsertRange es = edges.Clear(); edges <- es
+    member g.EdgeData = edges 
+    member g.InsertRange es = edges.Clear(); edges <- es
     member __.Clear () = edges.Clear() 
-    member x.InsertVertex(s:'a) =  
+    member g.InsertVertex(s:'a) =  
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s,Dict()) 
         contained
     
-    member x.Remove(v:'a) = 
+    member g.Remove(v:'a) = 
        match (edges.tryFind v) with
         | None -> false
         | Some _ ->    
@@ -368,16 +367,16 @@ type WeightedDirectedGraph2<'a, 'b when 'a: equality and 'a:comparison>() =
            edges.Remove v
 
            
-    member x.InsertEdge (v0,v1, w) =  
+    member g.InsertEdge (v0,v1, w) =  
           match edges.tryFind v0 with
             | None -> ()
             | Some es ->
               es.ExpandElseAdd v1 (fun _ -> w) w
                                       
 
-    member x.ContainsVertex v = edges.ContainsKey v 
+    member g.ContainsVertex v = edges.ContainsKey v 
     
-    member x.AdjustWeight f v1 v2 =
+    member g.AdjustWeight f v1 v2 =
                 
         maybe {
            let! es = edges.tryFind v1
@@ -385,28 +384,28 @@ type WeightedDirectedGraph2<'a, 'b when 'a: equality and 'a:comparison>() =
            es.[v2] <- f old 
            return true}                     
 
-    member x.GetEdgeWeight v1 v2 =       
+    member g.GetEdgeWeight v1 v2 =       
         maybe {
            let! es = edges.tryFind v1
            let! w = es.tryFind v2 
            return w}  
 
-    member x.ContainsEdge v1 v2 = 
+    member g.ContainsEdge v1 v2 = 
         maybe {
         let! elist0 = edges.tryFind v1 
         return (elist0.ContainsKey v2)}  
 
-    member x.GetEdges v = 
+    member g.GetEdges v = 
         maybe {
          let! elist = edges.tryFind v  
          return (keyValueSeqtoPairArray elist)}       
 
-    member x.Edges = 
-      Hashset(x.EdgeData
+    member g.Edges = 
+      Hashset(g.EdgeData
               |> Seq.collect (fun (DictKV(k,v)) -> 
                    v |> Seq.map (fun (KeyValue(k2,w)) -> (k,k2),w) 
                      |> Seq.toArray) 
               |> Seq.toArray) 
               |> Seq.toArray       
   
-    member x.Vertices = Hashset(edges.Keys)  
+    member g.Vertices = Hashset(edges.Keys)  
