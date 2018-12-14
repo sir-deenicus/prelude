@@ -1113,11 +1113,12 @@ let guidString () = Guid.NewGuid().ToString()
 
 let generateStrictId() = sprintf "%s|%A|%A|%A" (generateId()) DateTime.Now.TimeOfDay.TotalSeconds DateTime.Now.DayOfYear DateTime.Now.Year 
 ///only slightly slower and much better properties than regular hash
-let jenkinsOAThash (key: string) =  
+let jenkinsOAThash (key: string) =
+    let keymem = key.AsSpan()
     let mutable currenthash = 0u
     let len = (key.Length - 1)
     for i in 0..len do 
-        currenthash <- currenthash + uint32 (key.[i])
+        currenthash <- currenthash + uint32 (keymem.[i])
         currenthash <- currenthash + (currenthash <<< 10)
         currenthash <- currenthash ^^^ (currenthash >>> 6) 
      

@@ -1,16 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.1;netstandard2.0;net45</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;net45</TargetFrameworks>
     <Company />
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <Authors>Deen Abiola</Authors>
-    <Description>Set of useful Fsharp utility functions.</Description>
-    <Version>1.0.5</Version>
-    <PackageId>Prelude</PackageId>
+    <Description>Set of useful Fsharp utility functions. .NET standard and Framework targetted.</Description>
+    <Version>1.0.6</Version>
+    <PackageId>Prelude-Standard</PackageId>
+    <AssemblyName>Prelude-Standard</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="some tests.fsx" />
     <Compile Include="pseq.fs" />
     <Compile Include="prelude.fs" />
     <Compile Include="math.fs" />
@@ -23,6 +25,9 @@
     <Compile Include="StringMetrics.fs" />
     <Compile Include="Trie.fs" />
     <Compile Include="TrieStringSearch.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Memory" Version="4.5.1" />
   </ItemGroup>
 
 </Project>
