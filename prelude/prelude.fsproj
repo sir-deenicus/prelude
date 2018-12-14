@@ -6,10 +6,10 @@
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
     <Authors>Deen Abiola</Authors>
-    <Description>Set of useful Fsharp utility functions. .NET standard and Framework targetted.</Description>
+    <Description>Set of useful Fsharp utility functions. .NET standard and Framework targeted.</Description>
     <Version>1.0.6</Version>
     <PackageId>Prelude-Standard</PackageId>
-    <AssemblyName>Prelude-Standard</AssemblyName>
+    <AssemblyName>Prelude</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <None Include="some tests.fsx" />
