@@ -400,13 +400,14 @@ module Array =
             a1.[i] <- a1.[i] </ operator /> a2.[i]
     
     let inline addInPlaceIntoFirst (a1 : 'a []) (a2 : 'a []) =
-        let a1m = a1.AsSpan()
-        let a2m = a2.AsSpan()
         for i in 0..a1.Length - 1 do
-            a1m.[i] <- a1m.[i] + a2m.[i]
+            a1.[i] <- a1.[i] + a2.[i]
     
     let inline lp_norm f (vec1 : 'a []) (vec2 : 'a []) =
-        Array.fold2 (fun sum x1 x2 -> f (x1 - x2) + sum) 0. vec1 vec2
+        let mutable sum = 0.
+        for i in 0..vec1.Length - 1 do
+            sum <- f (vec1.[i] - vec2.[i]) + sum
+        sum
 
     let inline euclideanDist v v2 = lp_norm (float >> squared) v v2 |> sqrt
 
@@ -442,10 +443,11 @@ type Array with
 
     static member inline Op operator a b = Array.map2 operator a b //NOTE: in defaultof<>,no performance penalty
 
-    static member inline dotproduct v1 v2 =
-        Array.fold2 (fun dotp x1 x2 -> x1 * x2 + dotp) Unchecked.defaultof<'a> 
-            v1 v2
-
+    static member inline dotproduct (v1:_[]) (v2:_[]) =
+        let mutable sum = Unchecked.defaultof<'a> 
+        for i in 0..v1.Length - 1 do
+            sum <- v1.[i] * v2.[i] + sum     
+        sum
     static member inline magnitude v = Array.dotproduct v v |> sqrt
     
     static member inline to_unitvector v =

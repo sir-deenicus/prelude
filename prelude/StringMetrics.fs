@@ -207,17 +207,25 @@ let inline splitNatATime hashfunc f op N (data : 'a []) =
 
 ///splits like "abcdef" -> "ab" "cd" "ef"
 let inline splitNatATimeStr N (str : string) =
-    str
-    |> Seq.fold (fun (bset, curCombo, i, cnt) curchar -> 
-           if i = N then 
-               bset |> Set.add (jenkinsOAThash curCombo), string curchar, 1, 
-               cnt + 1
-           elif cnt = str.Length - 1 then 
-               bset |> Set.add (jenkinsOAThash (curCombo + string curchar)), "", 
-               0, cnt + 1
-           else bset, curCombo + string curchar, i + 1, cnt + 1) 
-           (Set.empty, "", 0, 0)
-    |> fst4
+    let chars = str.AsSpan()
+    let bset = Hashset()
+    let mutable i = 0
+    let curCombo = System.Text.StringBuilder()
+    for c in 0..chars.Length - 1 do
+        if i = N then 
+            bset.Add(jenkinsOAThash (curCombo.ToString())) |> ignore
+            i <- 1
+            curCombo.Clear() |> ignore
+            curCombo.Append chars.[c] |> ignore
+        elif c = str.Length - 1 then 
+            curCombo.Append chars.[c] |> ignore
+            bset.Add(jenkinsOAThash (curCombo.ToString())) |> ignore
+            curCombo.Clear() |> ignore
+            i <- 0
+        else 
+            curCombo.Append chars.[c] |> ignore
+            i <- i + 1
+    set bset
 
 ///really semantic sugar for set.min
 let minhash hset = hset |> Set.minElement
