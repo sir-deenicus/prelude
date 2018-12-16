@@ -4,6 +4,7 @@ open Prelude.Common
 open System
 open Prelude.Collections.FibonacciHeap
 open Prelude.SimpleGraphs
+open Microsoft.Collections.Extensions
 
 type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweights) =
     let mutable edges = Dict<'a, Hashset<WeightedNode<'a>>>()
@@ -86,6 +87,7 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweig
         else None
     
     member __.EdgeWeights = edgeWeights
+
     member g.GetEdgeWeight v1 v2 = maybe { let! w = edgeWeights.tryFind 
                                                         (struct (v1, v2))
                                            return w }
@@ -228,10 +230,10 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweig
 
 //
 ///Can have any edge type
-type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparison>() =
-    let mutable edges = Dict<int, Dict<int, 'b>>()
-    let vertices = Dict<'a, int>()
-    let rev_vertices = Dict<int, 'a>()
+type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparison and 'a :> IEquatable<'a>>() =
+    let mutable edges = DictionarySlim<int, DictionarySlim<int, 'b>>()
+    let vertices = DictionarySlim<'a, int>()
+    let rev_vertices = DictionarySlim<int, 'a>()
     member g.EdgeData = edges
     member __.GraphData =
         (edges, keyValueSeqtoPairArray vertices, 
@@ -242,8 +244,8 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparis
         vertices.Clear()
         rev_vertices.Clear()
         edges <- es
-        Array.iter vertices.Add vs
-        Array.iter rev_vertices.Add rvs
+        Array.iter (fun (x,i) -> let index = &vertices.GetOrAddValueRef x in index <- i) vs
+        Array.iter (fun (i,x) -> let item = &rev_vertices.GetOrAddValueRef i in item <- x) rvs
     
     member __.Clear() =
         edges.Clear()
@@ -253,66 +255,80 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparis
     member g.ComputeReverseIndex() =
         rev_vertices.Clear()
         for (KeyValue(k, i2)) in vertices do
-            rev_vertices.Add(i2, k)
+            let item = &rev_vertices.GetOrAddValueRef i2
+            item <- k
     
     member g.InsertVertex(s : 'a) =
         let contained = vertices.ContainsKey s
         if not contained then 
             let count = vertices.Count
-            vertices.Add(s, count)
-            edges.Add(count, Dict())
+            let vs = &vertices.GetOrAddValueRef s
+            vs <- count
+            let d = &edges.GetOrAddValueRef (count)
+            d <- DictionarySlim() 
         contained
     
     member g.Remove(v : 'a) =
-        match (vertices.tryFind v) with
-        | None -> false
-        | Some i -> 
+        let has, i = vertices.TryGetValue v
+        if has then
             for (KeyValue(k, es)) in edges do
                 if es.ContainsKey i then 
                     es.Remove i
                     ()
             edges.Remove i
-    
+        else false
+            
     member g.InsertEdge(v0, v1, w) =
-        maybe { 
-            let! i = vertices.tryFind v0
-            let! i2 = vertices.tryFind v1
-            let es = edges.[i]
-            es.ExpandElseAdd i2 (fun _ -> w) w
-            return true
-        }
-    
+        let has1, i = vertices.TryGetValue v0
+        if has1 then
+            let has2, i2 = vertices.TryGetValue v1
+            if has2 then
+                let _, es = edges.TryGetValue i
+                let w0 = &es.GetOrAddValueRef i2
+                w0 <- w
+                true
+            else false
+        else false
+            
     member g.ContainsVertex v = vertices.ContainsKey v
     
-    member g.AdjustWeight f v1 v2 =
-        maybe { 
-            let! i = vertices.tryFind v1
-            let es = edges.[i]
-            let! i2 = vertices.tryFind v2
-            let! old = es.tryFind i2
-            es.[i2] <- f old
-            return true
-        }
-    
+    member g.AdjustWeight f v1 v2 =           
+            let has1, i = vertices.TryGetValue v1
+            if has1 then
+                let has2, i2 = vertices.TryGetValue v2
+                if has2 then
+                    let _, es = edges.TryGetValue i
+                    if es.ContainsKey i2 then
+                        let w = &es.GetOrAddValueRef i2
+                        w <- f w
+
     member g.GetEdgeWeight v1 v2 =
-        maybe { 
-            let! i = vertices.tryFind v1
-            let es = edges.[i]
-            let! i2 = vertices.tryFind v2
-            let! w = es.tryFind i2
-            return w
-        }
-    
-    member g.ContainsEdge v1 v2 = maybe { let! i = vertices.tryFind v1
-                                          let! i2 = vertices.tryFind v2
-                                          return (edges.[i].ContainsKey i2) }
-    
-    member g.GetEdges v =
-        maybe { 
-            let! i = vertices.tryFind v
-            let es = edges.[i] 
-            return [| for (KeyValue(k, w)) in es -> rev_vertices.[k], w |]
-        }
+            let has1, i = vertices.TryGetValue v1
+            if has1 then
+                let has2, i2 = vertices.TryGetValue v2
+                if has2 then
+                    let _, es = edges.TryGetValue i 
+                    let has3, w = es.TryGetValue i2
+                    if has3 then Some w else None
+                else None
+            else None
+                
+    member g.ContainsEdge v1 v2 = 
+           let has1, i = vertices.TryGetValue v1
+           if has1 then
+                let has2, i2 = vertices.TryGetValue v2
+                if has2 then
+                    let e = edges.TryGetValue i |> snd
+                    e.ContainsKey i2
+                else false
+            else false
+
+    member g.GetEdges v =  
+            let hasv, i = vertices.TryGetValue v
+            if hasv then
+                let _, es = edges.TryGetValue i 
+                Some [| for (KeyValue(k, w)) in es -> rev_vertices.TryGetValue k |> snd, w |]
+            else None         
     
     member g.Edges =
         Hashset(g.EdgeData
@@ -320,13 +336,14 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparis
                        v
                        |> Seq.map 
                               (fun (KeyValue(k2, w)) -> 
-                              (rev_vertices.[k], rev_vertices.[k2]), w)
+                              (rev_vertices.TryGetValue k |> snd, rev_vertices.TryGetValue k2 |> snd), w)
                        |> Seq.toArray)
                 |> Seq.toArray)
         |> Seq.toArray
     
     member g.Vertices =
         [| for kv in vertices -> kv.Key |]
+
 
 type WeightedDirectedGraphBasic<'a, 'b when 'a : equality and 'a : comparison>() =
     let mutable edges = Dict<'a, Dict<'a, 'b>>()
