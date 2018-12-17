@@ -1,12 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.1;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net47;netstandard2.0</TargetFrameworks>
     <Company />
     <AssemblyVersion>1.0.8.0</AssemblyVersion>
     <FileVersion>1.0.8.0</FileVersion>
     <Authors>Deen Abiola</Authors>
-    <Description>Set of useful Fsharp utility functions. .NET Core focused</Description>
+    <Description>Set of useful Fsharp utility functions. .NET Standard</Description>
     <Version>1.0.8</Version>
     <PackageId>Prelude-Standard</PackageId>
     <AssemblyName>Prelude</AssemblyName>
