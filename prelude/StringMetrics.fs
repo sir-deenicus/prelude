@@ -207,7 +207,7 @@ let inline splitNatATime hashfunc f op N (data : 'a []) =
 
 ///splits like "abcdef" -> "ab" "cd" "ef"
 let inline splitNatATimeStr N (str : string) =
-    let chars = str.AsSpan()
+    let chars = str.ToCharArray()
     let bset = Hashset()
     let mutable i = 0
     let curCombo = System.Text.StringBuilder()
