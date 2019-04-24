@@ -674,6 +674,9 @@ module Strings =
   let inline replace (unwantedstr:string) replacement (str:string) = str.Replace(unwantedstr,replacement)
 
   let inline replace2 replacement (str:string) (unwantedstr:string) = str.Replace(unwantedstr,replacement)
+  
+  let replaceN wordsToReplace replacement str =
+        wordsToReplace |> Seq.fold (replace2 replacement) str 
 
   ///true when [sub]string is contained in [s]tring
   let inline strcontains (sub:string) (s:string) = s.Contains(trim sub)
@@ -788,8 +791,8 @@ module Strings =
       let usestr = if s.Length >= padlen then s.[..max 0 (padlen - 3)] + ".." else s + "  "
       usestr |> pad padlen
 
-  let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
-  
+  let reverse (s:string) =  s |> String.mapi (fun i _ -> s.[s.Length - 1 - i]) 
+
   let replaceRegEx (patternstring:string) (replacestring:string) (inputstring:string) = 
       Text.RegularExpressions.Regex.Replace(inputstring,patternstring, replacestring)  
 
