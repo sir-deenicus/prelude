@@ -13,6 +13,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="CollectionSlim.fs" />
     <None Include="some tests.fsx" />
     <Compile Include="pseq.fs" />
     <Compile Include="prelude.fs" />

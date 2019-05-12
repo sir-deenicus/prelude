@@ -126,7 +126,7 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweig
             let removes = ResizeArray()
             for (KeyValue(struct (a, b) as node, w)) in edgeWeights do
                 if b = v then
-                    edges.[a].Remove(WeightedNode(w, b))
+                    edges.[a].Remove(WeightedNode(w, b)) |> ignore
                     removes.Add(node)
                     ()
             for n in removes do
@@ -160,7 +160,7 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweig
                              Some 0.
                 let v' = WeightedNode(w, v2)
                 let elist0 = edges.[v1]
-                elist0.Remove(v')
+                elist0.Remove(v') |> ignore
                 let w' = f w
                 let adj1 = elist0.Add(WeightedNode(w', v2))
                 edgeWeights.[struct (v1, v2)] <- w'
@@ -358,7 +358,7 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparis
         if has then
             for (KeyValue(k, es)) in edges do
                 if es.ContainsKey i then
-                    es.Remove i
+                    es.Remove i |> ignore
                     ()
             edges.Remove i
         else false
@@ -454,7 +454,7 @@ type WeightedDirectedGraphBasic<'a, 'b when 'a : equality and 'a : comparison>()
         | Some _ ->
             for (KeyValue(k, es)) in edges do
                 if es.ContainsKey v then
-                    es.Remove v
+                    es.Remove v |> ignore
                     ()
             edges.Remove v
 
