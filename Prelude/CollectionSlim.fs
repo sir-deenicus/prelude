@@ -155,18 +155,18 @@ type ListSlim<'k> =
         List.init m.count (Array.get m.entries)
 
 [<Struct>]
-type private Entry<'k> =
+type private SetEntry<'k> =
     val mutable bucket : int
     val mutable next : int
     val mutable key : 'k
 
 type private InitialHolder<'k>() =
-    static let initial = Array.zeroCreate<Entry<'k>> 1
+    static let initial = Array.zeroCreate<SetEntry<'k>> 1
     static member inline Initial = initial
 
 type SetSlim<'k when 'k : equality and 'k :> IEquatable<'k>> =
     val mutable private count : int
-    val mutable private entries : Entry<'k>[]
+    val mutable private entries : SetEntry<'k>[]
     new() = {count=0; entries=InitialHolder<_>.Initial}
     new(capacity:int) = {
         count = 0
@@ -185,7 +185,7 @@ type SetSlim<'k when 'k : equality and 'k :> IEquatable<'k>> =
 
     member private m.Resize() =
         let oldEntries = m.entries
-        let entries = Array.zeroCreate<Entry<_>> (oldEntries.Length*2)
+        let entries = Array.zeroCreate<SetEntry<_>> (oldEntries.Length*2)
         for i = oldEntries.Length-1 downto 0 do
             entries.[i].key <- oldEntries.[i].key
             let bi = entries.[i].key.GetHashCode() &&& (entries.Length-1)

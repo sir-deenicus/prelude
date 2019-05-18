@@ -718,10 +718,29 @@ module Strings =
   let (|StrContainsRemove|_|) (t:string) (str : string) = 
      if str.Contains(t) then Some(str.Replace(t,"")) else None 
 
-  let (|StrContainsGroupRegEx|_|) t (str : string) = 
+  let (|ContainsGroupRegEx|_|) t (str : string) = 
      if Text.RegularExpressions.Regex.IsMatch(str, t) then 
         let groups = Text.RegularExpressions.Regex.Match(str, t)
-        Some([|for g in groups.Groups -> g.Value|]) else None 
+        let res = [|for g in groups.Groups -> g.Value|]
+        if res.Length > 1 then Some(res.[1..]) else None 
+     else None 
+  
+  let (|ContainsGroupsRegEx|_|) t (str : string) = 
+     if Text.RegularExpressions.Regex.IsMatch(str, t) then 
+        let matches = Text.RegularExpressions.Regex.Matches(str, t)
+        [|for m in matches do
+            let gs = [|for g in m.Groups -> g.Value |]
+            if gs.Length > 1 then yield! gs.[1..]|]
+        |> Some  
+     else None
+
+  let regExReplaceWith replacer pattern str =
+    let replace (m: Text.RegularExpressions.Match) =
+        match m.Value with 
+        | ContainsGroupRegEx pattern [|a|] -> replacer a
+        | _ -> failwith "Error in string match"
+    Text.RegularExpressions.Regex.Replace(str,pattern,replace)
+    
 
   let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
