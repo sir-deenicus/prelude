@@ -131,7 +131,7 @@ let toInt (s:string) =
         
 let containsDash (s:string) = maybe {if s.Contains("-") then return s else return! None }
 
-let testDouble s = 
+let isRangedDouble s = 
     maybe {
             match containsDash s with
              | Some(s) ->
@@ -148,7 +148,7 @@ let (|Double|String|Int|) s =
    match toInt s with
     | Some i -> Int i
     | None ->  
-       match testDouble s with
+       match toDouble s with
         | Some f -> Double f
         | None -> String s 
  
@@ -534,7 +534,9 @@ module Array =
 
     let selectColumns cs = filterToColumn (flip Set.contains) cs
     let deleteColumns cs = filterToColumn (fun cols c -> Set.contains c cols |> not) cs
-             
+    let takeOrMax n a =
+        let len = Array.length a - 1
+        a.[..min n len]
 //---------Array 2D----------
 type 'a ``[,]`` with
     member m.RowCount = m.GetLength(0)

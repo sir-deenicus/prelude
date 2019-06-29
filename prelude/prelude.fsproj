@@ -2,12 +2,10 @@
 
   <PropertyGroup>
     <TargetFrameworks>netcoreapp2.1;netstandard2.0;net47</TargetFrameworks>
-    <Company />
-    <AssemblyVersion>1.0.12.0</AssemblyVersion>
-    <FileVersion>1.0.12.0</FileVersion>
+    <Company />  
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions. .NET Core focused</Description>
-    <Version>1.0.12</Version>
+    <Version>1.0.15</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
