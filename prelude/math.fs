@@ -371,11 +371,20 @@ let scaleTo rmin rmax rangemin rangemax value =
         else rangemin, rangemax, value //translate to 0
     (adjval - adjrmin) / (adjrmax - adjrmin) * (rmax - rmin) + rmin
 
+let roundSig r x =
+    if abs x < 1. then 
+        let p = (log10 x) |> abs |> ceil
+        let pten = 10. ** p
+        let x' = x * pten
+        (round r x')/pten
+    else round r x
+
 ///a bit like a bucket, a bit like a round numbers can be flattened to powers of 10.
 ///10..10..100, 1000...1000...10000, 1000..100..10000 and so on
 ///n controls how many places to "round" by e.g. where to bucket x * 10^3 by 100 or 10 or 1
 let log10bucket n x_ =
     if x_ = 0. then 0.
+    elif abs x_ < 1. then x_
     else 
         let x = x_ |> abs |> round 0
         

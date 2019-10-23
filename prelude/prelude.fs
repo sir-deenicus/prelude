@@ -467,6 +467,8 @@ type Array with
 
 module Array =         
     let sub3 n (a:'a[]) = a.[min n (a.Length - 1)..]
+    let dropLast n (a:_ []) =
+        a.[..a.Length - 1 - n]
     let swapAtIndex i j (arr:'a[]) =
         let k = arr.[i]
         arr.[i] <- arr.[j]
@@ -627,6 +629,7 @@ module Strings =
                          else sb.Append(curchar) |> ignore
                               skipchar) false |> ignore
         sb.ToString().Trim()
+
   let newLine = Environment.NewLine
 
   let inline joinToStringWith (sep:string) (s:'a seq) = String.Join(sep, s)
