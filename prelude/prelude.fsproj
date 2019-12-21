@@ -5,7 +5,7 @@
     <Company />  
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions. .NET Core focused</Description>
-    <Version>1.0.19</Version>
+    <Version>1.0.20</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>

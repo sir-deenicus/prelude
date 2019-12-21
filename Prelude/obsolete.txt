@@ -41,3 +41,24 @@ let waterfallOption = WaterfallOptionBuilder()
 let nestif = NestedIfBuilder()  
 
 let nestifMaybe = NestedIfMaybeBuilder()   
+
+==================
+
+This did not actually work: 
+
+let pegasosInitVec λ size = Array.init size (fun _ -> random.NextDouble()) |> Array.to_unitvector |> Array.map ((*) (1./sqrt λ))
+
+///labels must be in {-1,1}
+let pegasosOnlineSVM_Step λ (x:float[]) y weightsXstep =
+       let w,step = defaultArg weightsXstep (pegasosInitVec λ x.Length,1.)
+       let check = y * Array.dotproduct w x
+
+       let η = 1. / (λ * step)  
+       let w_halfstep = Array.map ((*) (1. - η * λ)) w
+       if check < 1. then  //wrong
+         let scalex = Array.map ((*) y) x   
+         for i in 0..w.Length - 1 do
+            w_halfstep.[i] <- w_halfstep.[i] + η * scalex.[i]
+             
+       let scale = min 1. ((1./sqrt λ)/ Array.magnitude w_halfstep)
+       (Array.map ((*) scale) w_halfstep, step + 1.), check

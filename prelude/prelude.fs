@@ -376,6 +376,17 @@ module Map =
  
   let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
+
+module DictionarySlim =
+    open Microsoft.Collections.Extensions
+
+    let ofSeq es =
+        let d = DictionarySlim()
+        for (k, v) in es do
+            let item = &d.GetOrAddValueRef k
+            item <- v
+        d
+
 /////////////////////ARRAY AND ARRAY 2D useful utilites//////////////
 
 let internal foldRow2D, foldCol2D = 1, 0                     
@@ -389,8 +400,8 @@ module List =
       List.map (keepLeft (flip (/) tot)) l
 
 type 'a ``[]`` with
-  member inline self.LastElement = self.[self.Length - 1]
-  member inline self.nthFromLast(i) = self.[self.Length - i - 1]
+  member self.LastElement = self.[self.Length - 1]
+  member self.nthFromLast(i) = self.[self.Length - i - 1]
 
 type Array with 
   static member rot places a =
@@ -1322,14 +1333,32 @@ type ConsoleInterface(fname, onData,onError, ?args, ?onExit) =
          exec.Close()        
          exec.Dispose()  
          exe <- None  
+          
+let buildTableRow (collens : _ []) (row : string []) =
+    row
+    |> Array.mapi (fun i s -> Strings.pad collens.[i] s)
+    |> joinToStringWith " | "
 
+let makeTable newline headers title (table : string [] []) =
+    let hlen = Array.map String.length headers
+    let lens = table |> Array.map (Array.map (String.length))
 
-module DictionarySlim =
-    open Microsoft.Collections.Extensions
+    let longest =
+        [| for c in 0..headers.Length - 1 ->
+               max hlen.[c] (Array.selectColumn c lens
+                             |> Array.map Seq.head
+                             |> Array.max) |]
 
-    let ofSeq es =
-        let d = DictionarySlim()
-        for (k, v) in es do
-            let item = &d.GetOrAddValueRef k
-            item <- v
-        d
+    let t0 =
+        table
+        |> Array.map (buildTableRow longest)
+        |> joinToStringWith newline
+
+    let hrow =
+        [| headers
+
+           [| for i in 0..headers.Length - 1 -> String.replicate longest.[i] "-" |] |]
+        |> Array.map (buildTableRow longest)
+        |> joinToStringWith newline
+
+    String.Format("{0}{1}{1}{2}{1}{3}", (toupper title), newline, hrow, t0)
