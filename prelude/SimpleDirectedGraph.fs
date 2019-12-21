@@ -5,7 +5,7 @@ open System
 open Prelude.Collections.FibonacciHeap
 open Prelude.SimpleGraphs
 open Microsoft.Collections.Extensions
-
+ 
 type LabeledDirectedGraph<'a, 'b when 'a : equality and 'a : comparison>() =
     let mutable edges = Dict<'a, Hashset<'a>>()
     let mutable edgeWeights =
@@ -318,19 +318,30 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparis
     let vertices = DictionarySlim<'a, int>()
     let rev_vertices = DictionarySlim<int, 'a>()
     member g.EdgeData = edges
-    member __.GraphData =
-        (edges, keyValueSeqtoPairArray vertices,
-         keyValueSeqtoPairArray rev_vertices)
+    member __.GraphData f =
+        (keyValueSeqtoPairArray edges
+         |> Array.map (keepLeft (keyValueSeqtoPairArray >> Array.map (keepLeft f))),
+         keyValueSeqtoPairArray vertices) 
 
-    member g.InsertRange(es, vs, rvs) =
+    member g.InsertRange fn (es, vs) =
         edges.Clear()
-        vertices.Clear()
-        rev_vertices.Clear()
-        edges <- es
+        vertices.Clear() 
+
+        let dslim = DictionarySlim()
+        for (e, ns) in es do
+            let d = DictionarySlim<int,'b>()
+            for (e2,v) in ns do            
+                let f = &d.GetOrAddValueRef(e2)
+                f <- fn v
+            let xs = &dslim.GetOrAddValueRef(e)
+            xs <- d
+
+        edges <- dslim
+
         Array.iter (fun (x, i) ->
             let index = &vertices.GetOrAddValueRef x in index <- i) vs
-        Array.iter (fun (i, x) ->
-            let item = &rev_vertices.GetOrAddValueRef i in item <- x) rvs
+
+        g.ComputeReverseIndex()
 
     member __.Clear() =
         edges.Clear()

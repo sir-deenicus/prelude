@@ -1,0 +1,43 @@
+﻿The following are ideas for how to flatten nests that ended up not being a good idea.
+If they are needed probably something has already gone wrong.
+
+type WaterfallBuilder() =
+    member __.Bind(x, f) =
+        match x with
+        | Some(x) -> x
+        | _ -> f x
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x
+
+type WaterfallOptionBuilder() =
+    member __.Bind(x, f) =
+        match x with
+        | Some(_) as s -> s
+        | _ -> f x
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x
+    member __.Zero () = None
+///A nested if builder is a maybe modified to work with raw conditional tests
+type NestedIfBuilder() =
+    member __.Bind(x, f) =
+       if x then f x
+       else () 
+    member __.Delay(f) = f() 
+    member __.Zero () = ()     
+
+type NestedIfMaybeBuilder() =
+    member __.Bind(x, f) =
+       if x then f x
+       else None 
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x  
+let waterfall = WaterfallBuilder()
+
+let waterfallOption = WaterfallOptionBuilder()
+
+let nestif = NestedIfBuilder()  
+
+let nestifMaybe = NestedIfMaybeBuilder()   

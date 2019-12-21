@@ -10,26 +10,10 @@ open System.Linq
 open System.Text
 
 type MutableList<'a> = System.Collections.Generic.List<'a>
+
 type Hashset<'a> = System.Collections.Generic.HashSet<'a>
 
-///////ERROR CONTROL FLOW MONADS
-
-///A nested if builder is a maybe modified to work with raw conditional tests
-type NestedIfBuilder() =
-    member __.Bind(x, f) =
-       if x then f x
-       else () 
-    member __.Delay(f) = f() 
-    member __.Zero () = ()      
-
-
-type NestedIfMaybeBuilder() =
-    member __.Bind(x, f) =
-       if x then f x
-       else None 
-    member __.Delay(f) = f()
-    member __.Return(x) = Some x
-    member __.ReturnFrom(x) = x      
+///////ERROR CONTROL FLOW MONADS 
 
 type ErrorBuilder() =
     member __.Bind(x:Lazy<'a>, f) =
@@ -59,31 +43,7 @@ type MaybeBuilder() =
     member __.Delay(f) = f()
     member __.Return(x) = Some x
     member __.ReturnFrom(x) = x
-
-
-type WaterfallBuilder() =
-    member __.Bind(x, f) =
-        match x with
-        | Some(x) -> x
-        | _ -> f x
-    member __.Delay(f) = f()
-    member __.Return(x) = x
-    member __.ReturnFrom(x) = x
-
-type WaterfallOptionBuilder() =
-    member __.Bind(x, f) =
-        match x with
-        | Some(_) as s -> s
-        | _ -> f x
-    member __.Delay(f) = f()
-    member __.Return(x) = Some x
-    member __.ReturnFrom(x) = x
-    member __.Zero () = None
-
-let waterfall = WaterfallBuilder()
-
-let waterfallOption = WaterfallOptionBuilder()
-
+     
 let maybe = MaybeBuilder()
 
 type Either<'a,'b> = This of 'a | That of 'b
@@ -93,12 +53,12 @@ let error = ErrorBuilder()
 
 ///exits on first success otherwise falls through on things that may fail repeatedly 
 let errorFall = ErrorFallBuilder()
-
-let nestif = NestedIfBuilder()  
-
-let nestifMaybe = NestedIfMaybeBuilder()   
-
+ 
 let silentFailComputation f x = try Some(f x) with _ -> None
+
+///////////////////
+
+let inline isNumber (n:string) = Double.TryParse n |> fst     
 
 let inline (|ToFloat|) x = float x 
 
@@ -108,70 +68,83 @@ let inline (|ToString|) x = string x
 
 let inline (|ToStringArray|) d = d |> Array.map string
 
-let (|ToArray|) d = d |> Seq.toArray
-
-let inline isNumber (n:string) = Double.TryParse n |> fst        
+let (|ToArray|) d = d |> Seq.toArray 
 
 let (|ToDateTime|) d = DateTime.Parse d
 
-let (|IsDateTime|IsNumber|JustString|) (d:string) = 
-   let isn, n = Double.TryParse d
-   if isn then IsNumber n
-   else 
-    let p, dt = DateTime.TryParse d  
-    if p then IsDateTime dt 
-    else JustString d   
+let (|IsDateTime|IsNumber|JustString|) (d : string) =
+    let isn, n = Double.TryParse d
+    if isn then IsNumber n
+    else
+        let p, dt = DateTime.TryParse d
+        if p then IsDateTime dt
+        else JustString d
 
-let toDouble (s:string) = 
-    maybe {  let b, v = Double.TryParse(s)
-             if b then return v else return! None} 
-
-let toInt (s:string) = 
-    maybe { let b, v = Int32.TryParse(s) in if b then return v else return! None} 
-        
-let containsDash (s:string) = maybe {if s.Contains("-") then return s else return! None }
-
-let isRangedDouble s = 
+let toDouble (s : string) =
     maybe {
-            match containsDash s with
-             | Some(s) ->
-               let range = s.Split('-')
-               let numStr, numStr2 = range.[0], range.[1]
-               let! num1 = toDouble numStr
-               let! num2 = toDouble numStr2     
-               return (num1 + num2)/2.
-             | _ -> 
-                let! num = toDouble s
-                return num    }  
+        let b, v = Double.TryParse(s)
+        if b then return v
+        else return! None
+    }
 
-let (|Double|String|Int|) s = 
-   match toInt s with
+let toInt (s : string) =
+    maybe {
+        let b, v = Int32.TryParse(s) 
+        if b then return v
+        else return! None
+    }
+
+let containsDash (s : string) =
+    maybe {
+        if s.Contains("-") then return s
+        else return! None
+    }
+
+let isRangedDouble s =
+    maybe {
+        match containsDash s with
+        | Some(s) ->
+            let range = s.Split('-')
+            let numStr, numStr2 = range.[0], range.[1]
+            let! num1 = toDouble numStr
+            let! num2 = toDouble numStr2
+            return (num1 + num2) / 2.
+        | _ -> let! num = toDouble s
+               return num
+    }
+
+let (|Double|String|Int|) s =
+    match toInt s with
     | Some i -> Int i
-    | None ->  
-       match toDouble s with
+    | None ->
+        match toDouble s with
         | Some f -> Double f
-        | None -> String s 
- 
+        | None -> String s
 
 module Option =
- let getDef def x = match x with Some n -> n | None -> def
- let liftNull x = if x = null then None else Some x
- let mapNull f x = if x = null then None else Some (f x)
- let forAllNotEmpty f = function None -> false | Some x ->  f x
- 
+    let getDef def x =
+        match x with
+        | Some n -> n
+        | None -> def
+
+    let liftNull x =
+        if isNull x then None
+        else Some x
+
+    let mapNull f x =
+        if isNull x then None
+        else Some(f x)
+
+    let tryWith f =
+        function
+        | None -> false
+        | Some x -> f x
+
 //////////////////FUNCTIONS//////////
 
-let inline curry2 f a b = f(a,b)
+let inline curry f a b = f(a,b)
 
-let inline curry3 f a b c = f(a,b,c)
-
-let inline uncurry2 f (a,b) = f a b
-
-let inline uncurry3 f (a,b,c) = f a b c
-
-let inline curryfst f a _ = f a
-
-let inline currysnd f _ b = f b 
+let inline uncurry f (a,b) = f a b
 
 let inline flip f a b = f b a 
  
@@ -179,29 +152,28 @@ let inline keepLeft f (x,y) = x , f y
 
 let inline keepRight f (x,y) = f x , y
 
-let inline pairapply f (x,y) = (f x, f y)
+let inline pairapply f (x,y) = (f x, f y) 
 
-let inline pairapply_obj (f:obj->'b) (x,y) = (f x, f y)
-
-
-let triapply f (a,b,c) = f a, f b, f c 
-
-let quadapply f (a,b,c,d) = f a, f b, f c, f d
-
-let pair a b = a,b 
-
-let pairOfArray (a:_[]) = a.[0], a.[1] 
-
-let inline pairop op (x,y) (u,v) = (op x u, op y v)
-
-let inline addPairs x y = pairop (+) x y
-
-let inline applyToPair op (x,y) = op x y
-
-let inline joinpair op (x,y) = op x y
-   
 let inline lessToLeft (a,b) = if a < b then a,b else b,a 
-  
+   
+module Tuple = 
+    let triapply f (a,b,c) = f a, f b, f c 
+
+    let quadapply f (a,b,c,d) = f a, f b, f c, f d
+
+    let pair a b = a,b 
+
+module Pair =  
+    let ofArray (a:_[]) = a.[0], a.[1] 
+
+    let toArray (a,b) = [|a;b|]
+
+    let inline map op (x,y) (u,v) = (op x u, op y v)
+
+    let inline addPairs x y = map (+) x y
+
+    let inline apply op (x,y) = op x y  
+
 //no overhead as far as I can see
 let inline (</) x f = f x
  
@@ -216,7 +188,7 @@ let inline funcOr f1 f2 a = f1 a || f2 a
 let inline funcAnd f1 f2 a = f1 a && f2 a
 /////SEQUENCES///////////////
 
-///Similar structure to Unfold but does not necessarily generate sequences and meant to be used in place of loops.
+///[Deprecated: do not use] Similar structure to Unfold but does not necessarily generate sequences and meant to be used in place of loops.
 let recurse stopcondition func seed =
     let rec inner = function
       | state when stopcondition state -> state 
@@ -226,7 +198,7 @@ let recurse stopcondition func seed =
 //    seq {for el in seqs do 
 //          if !counter < n then  
 //           if cond el then incr counter; yield f el}   
-let filterMapTrunc n cond f (seqs: 'a seq) =
+let filterMapTruncate n cond f (seqs: 'a seq) =
     let counter = ref 0 
     let en = seqs.GetEnumerator() 
     recurse (fun _ -> not(!counter < n && en.MoveNext()))
@@ -236,7 +208,7 @@ let filterMapTrunc n cond f (seqs: 'a seq) =
                    incr counter
                    f el::curlist else curlist) []  
                    
-let mapFilterTrunc n f cond (seqs: 'a seq) =
+let mapFilterTruncate n f cond (seqs: 'a seq) =
     let counter = ref 0 
     let en = seqs.GetEnumerator() 
     recurse (fun _ -> not(!counter < n && en.MoveNext()))
@@ -308,6 +280,7 @@ let keyValueSeqtoPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
 type Dict<'a,'b> = Collections.Generic.Dictionary<'a,'b> 
+
 type IDict<'a,'b> = Collections.Generic.IDictionary<'a, 'b>
 
 module IDict =
@@ -373,17 +346,16 @@ type IDictionary<'k,'v> with
         if not isin then t.Add(key,item)  
 
 module Map =
-  let inline sum m = m |> Map.fold (curryfst (+)) Unchecked.defaultof<'a>
+  let inline sum m = m |> Map.fold (fun sum _ v -> v + sum) Unchecked.defaultof<'a>
   let addGeneric map key f initial = 
       match Map.tryFind key map with 
       | Some item -> Map.add key (f item) map
       | None -> Map.add key initial map
 
-  let inline addOne map key = addGeneric map key ((+) 1.) 1.
+  let inline Incr map key = addGeneric map key ((+) 1.) 1.
 
   let inline defGet map key defaultValue = match Map.tryFind key map with Some item -> item | None -> defaultValue
  
-
   let inline getAdd map key defaultValue =  
      match Map.tryFind key map with
        | Some item -> item, map 
@@ -438,11 +410,11 @@ type Array with
   static member inline lastElement (a:'a []) = a.[a.Length - 1]
   static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
   static member inline get2 loc (a:'a[]) = a.[loc] 
-  static member inline countElements array = array |> Array.fold Map.addOne Map.empty 
+  static member inline countElements array = array |> Array.fold Map.Incr Map.empty 
   static member countElementsMapThenFilter f filter array = 
        array |> Array.fold (fun counts item -> 
                             let item' = f item 
-                            if filter item' then Map.addOne counts item' else counts) Map.empty
+                            if filter item' then Map.Incr counts item' else counts) Map.empty
 
   static member countAndMax array =  
      let counts = array |> Array.countElements 
@@ -526,9 +498,9 @@ module Array =
     let oddElements a = filteri (fun i _ -> i % 2 <> 0) a
     let evenElements a = filteri (fun i _ -> i % 2 = 0) a
 
-    let filterToColumn op c (d:'a[][]) = d |> Array.map (filteri (curryfst (op c)))
+    let filterToColumn op c (d:'a[][]) = d |> Array.map (filteri (fun i _ -> op c i))
 
-    let filterToColumnSingle op c (d:'a[]) = d |> filteri (curryfst (op c))
+    let filterToColumnSingle op c (d:'a[]) = d |> filteri (fun i _ -> op c i)
     let deleteCol c = filterToColumnSingle (<>) c
     let deleteColumn c = filterToColumn (<>) c
 
@@ -711,14 +683,14 @@ module Strings =
 
   let (|StrContainsOneOf|_|) (testStrings) str = testStrings |> Seq.tryFind (containedinStr str) 
       
-  let (|StrContainsAllRemove|_|) (testStrings : string[]) str = 
-     
-      nestifMaybe {
-           let! pass = testStrings |> Array.forall (containedinStr str) 
-           return (testStrings |> Array.fold (replace2 "") str)}
+  let (|StrContainsAllRemove|_|) (testStrings : string[]) str =      
+      let pass = testStrings |> Array.forall (containedinStr str) 
+      if pass then Some (testStrings |> Array.fold (replace2 "") str)
+      else None
 
   let (|StrContainsAll|_|) (testStrings : string[]) str = 
-      nestifMaybe {let! pass = testStrings |> Array.forall (containedinStr str) in return pass}
+      let pass = testStrings |> Array.forall (containedinStr str) 
+      if pass then Some true else None
 
   let (|StrContainsRemove|_|) (t:string) (str : string) = 
      if str.Contains(t) then Some(str.Replace(t,"")) else None 
@@ -744,8 +716,7 @@ module Strings =
         match m.Value with 
         | ContainsGroupRegEx pattern [|a|] -> replacer a
         | _ -> failwith "Error in string match"
-    Text.RegularExpressions.Regex.Replace(str,pattern,replace)
-    
+    Text.RegularExpressions.Regex.Replace(str,pattern,replace) 
 
   let inline strContainsOneOf testStrings str = (|StrContainsOneOf|_|) testStrings str |> Option.isSome 
 
@@ -956,7 +927,7 @@ module Seq =
 
   let inline sortByDescendingLinq f (sequence : 'a seq) = sequence.OrderByDescending (System.Func<_,_> f)
  
-  let inline counts (v:seq<'a>) =  v |> Seq.fold Map.addOne Map.empty
+  let inline counts (v:seq<'a>) =  v |> Seq.fold Map.Incr Map.empty
 
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
 
@@ -1169,8 +1140,6 @@ let inline jenkinsOAThashGeneric (key: ^a []) =
     currenthash <- currenthash + (currenthash <<< 15);
     currenthash  
 
-//-------------------------
-
 //////////////////////////////////
 
 let DocumentsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
@@ -1353,3 +1322,14 @@ type ConsoleInterface(fname, onData,onError, ?args, ?onExit) =
          exec.Close()        
          exec.Dispose()  
          exe <- None  
+
+
+module DictionarySlim =
+    open Microsoft.Collections.Extensions
+
+    let ofSeq es =
+        let d = DictionarySlim()
+        for (k, v) in es do
+            let item = &d.GetOrAddValueRef k
+            item <- v
+        d
