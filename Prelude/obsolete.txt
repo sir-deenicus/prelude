@@ -1,0 +1,64 @@
+﻿The following are ideas for how to flatten nests that ended up not being a good idea.
+If they are needed probably something has already gone wrong.
+
+type WaterfallBuilder() =
+    member __.Bind(x, f) =
+        match x with
+        | Some(x) -> x
+        | _ -> f x
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x
+
+type WaterfallOptionBuilder() =
+    member __.Bind(x, f) =
+        match x with
+        | Some(_) as s -> s
+        | _ -> f x
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x
+    member __.Zero () = None
+///A nested if builder is a maybe modified to work with raw conditional tests
+type NestedIfBuilder() =
+    member __.Bind(x, f) =
+       if x then f x
+       else () 
+    member __.Delay(f) = f() 
+    member __.Zero () = ()     
+
+type NestedIfMaybeBuilder() =
+    member __.Bind(x, f) =
+       if x then f x
+       else None 
+    member __.Delay(f) = f()
+    member __.Return(x) = Some x
+    member __.ReturnFrom(x) = x  
+let waterfall = WaterfallBuilder()
+
+let waterfallOption = WaterfallOptionBuilder()
+
+let nestif = NestedIfBuilder()  
+
+let nestifMaybe = NestedIfMaybeBuilder()   
+
+==================
+
+This did not actually work: 
+
+let pegasosInitVec λ size = Array.init size (fun _ -> random.NextDouble()) |> Array.to_unitvector |> Array.map ((*) (1./sqrt λ))
+
+///labels must be in {-1,1}
+let pegasosOnlineSVM_Step λ (x:float[]) y weightsXstep =
+       let w,step = defaultArg weightsXstep (pegasosInitVec λ x.Length,1.)
+       let check = y * Array.dotproduct w x
+
+       let η = 1. / (λ * step)  
+       let w_halfstep = Array.map ((*) (1. - η * λ)) w
+       if check < 1. then  //wrong
+         let scalex = Array.map ((*) y) x   
+         for i in 0..w.Length - 1 do
+            w_halfstep.[i] <- w_halfstep.[i] + η * scalex.[i]
+             
+       let scale = min 1. ((1./sqrt λ)/ Array.magnitude w_halfstep)
+       (Array.map ((*) scale) w_halfstep, step + 1.), check

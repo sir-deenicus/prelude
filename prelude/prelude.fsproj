@@ -1,17 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netcoreapp2.1;netstandard2.0;net46</TargetFrameworks>
-    <Company />
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <TargetFrameworks>netcoreapp2.1;netstandard2.0;net47</TargetFrameworks>
+    <Company />  
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions. .NET Core focused</Description>
-    <Version>1.0.6</Version>
+    <Version>1.0.20</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="obsolete.txt" />
+    <Compile Include="CollectionSlim.fs" />
     <None Include="some tests.fsx" />
     <Compile Include="pseq.fs" />
     <Compile Include="prelude.fs" />
@@ -25,6 +26,10 @@
     <Compile Include="StringMetrics.fs" />
     <Compile Include="Trie.fs" />
     <Compile Include="TrieStringSearch.fs" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Experimental.Collections" Version="1.0.6-e190117-3" />
   </ItemGroup>
 
 </Project>

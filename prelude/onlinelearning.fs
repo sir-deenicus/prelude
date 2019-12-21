@@ -1,14 +1,19 @@
 ﻿module Prelude.Onlinelearning
 
 open Prelude
-
 open Prelude.Math
 open System
 open Prelude.Common
 
-
+type AvgPerceptronState = {
+   mutable C:float;
+   mutable Bias : float;
+   mutable ß : float
+   Weights : float []
+   CachedWeights : float  []
+}
+      
 let inline logistic x =  1./(1.+ exp(x))
-
 
 let rootMeanError data lbls vec = 
     (data, lbls) ||> Array.map2 (fun x y -> (Array.dotproduct vec x - y)**2.0) 
@@ -36,15 +41,7 @@ let regressAvgStream alpha h op (xs : float []) (y:float) weightXavgWeigths =
         let m, c = avgws.[j]
         avgws.[j] <- Stats.online_mean m c ws.[j]            
     (ws,avgws),e
-
-type AvgPerceptronState = {
-   mutable C:float;
-   mutable Bias : float;
-   mutable ß : float
-   Weights : float []
-   CachedWeights : float  []
-}
-            
+      
 ///params = (weight,cachedAvgWeigths, c, bias, beta)
 let averagedPerceptronStep (vec : float []) (y:float) parameters =
     let param = defaultArg parameters 
@@ -160,9 +157,8 @@ let inline online_kmeans_sphere nu (weights : 'a [] []) example =
      
      let mag = topweight |> Array.magnitude
      Array.iteri (fun i w -> topweight.[i] <- w / mag) topweight
-
-
-    
+         
+         
 let buildDistTableSym f dist (v:'a[]) =
     let len = v.Length
     [|for i in 0..len - 1 -> i|] |> Array.Parallel.map 
@@ -176,22 +172,4 @@ let buildDistTable f dist (v1:'a[]) (v2:'a[]) =
         (fun i -> 
             [|for j in 0..v2.Length - 1 ->
               (f v1.[i]), (f v2.[j]), dist (f v1.[i]) (f v2.[j])|])
-
-
-let pegasosInitVec λ size = Array.init size (fun _ -> random.NextDouble()) |> Array.to_unitvector |> Array.map ((*) (1./sqrt λ))
-
-///labels must be in {-1,1}
-let pegasosOnlineSVM_Step λ (x:float[]) y weightsXstep =
-       let w,step = defaultArg weightsXstep (pegasosInitVec λ x.Length,1.)
-       let check = y * Array.dotproduct w x
-
-       let η = 1. / (λ * step)  
-       let w_halfstep = Array.map ((*) (1. - η * λ)) w
-       if check < 1. then  //wrong
-         let scalex = Array.map ((*) y) x   
-         for i in 0..w.Length - 1 do
-            w_halfstep.[i] <- w_halfstep.[i] + η * scalex.[i]
-             
-       let scale = min 1. ((1./sqrt λ)/ Array.magnitude w_halfstep)
-       (Array.map ((*) scale) w_halfstep, step + 1.), check
 
