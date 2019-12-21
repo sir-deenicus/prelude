@@ -502,3 +502,5 @@ type WeightedDirectedGraphBasic<'a, 'b when 'a : equality and 'a : comparison>()
         |> Seq.toArray
 
     member g.Vertices = Hashset(edges.Keys)
+
+

@@ -4,27 +4,35 @@ open Prelude.Common
 open System
 open Prelude.Collections.FibonacciHeap
 
+type IGraph<'Node, 'Edge, 'Weight> =
+    abstract Vertices : seq<'Node> 
+    abstract Edges : ('Node * 'Node) []
+    abstract WeightedEdges : (('Node * 'Node) * 'Weight) [] 
+    abstract GetEdges : 'Node -> 'Edge [] option
+
 //open Prelude.Collections
 [<AbstractClass>]
 type FastGraph<'a when 'a: comparison>() =
     abstract InsertVertex: 'a -> bool
     abstract InsertEdge: 'a * 'a -> (bool * bool) option
     abstract ContainsVertex: 'a -> bool
-    abstract EdgeData: Collections.Generic.IDictionary<'a,'a Hashset>
+    abstract EdgeData: Collections.Generic.IDictionary<'a, 'a Hashset>
     abstract ContainsEdge: 'a -> 'a -> bool option
     abstract GetEdges: 'a -> 'a [] option
-    
+
     member g.Vertices =
         g.EdgeData
         |> Seq.map keyValueToKey
         |> Seq.toArray
-    
+
     member g.Edges =
-        Hashset(g.EdgeData
-                |> Seq.collect(fun (DictKV(k,v)) -> 
-                       v |> Seq.map(fun e2 -> lessToLeft(k,e2))
-                         |> Seq.toArray)
-                |> Seq.toArray)
+        Hashset
+            (g.EdgeData
+             |> Seq.collect (fun (DictKV(k, v)) ->
+                 v
+                 |> Seq.map (fun e2 -> lessToLeft (k, e2))
+                 |> Seq.toArray)
+             |> Seq.toArray)
         |> Seq.toArray
 
 type FastStringGraph() =
@@ -126,9 +134,9 @@ type FastStringGraphIntIndexed() =
                    |> Seq.map(fun i -> vertdata.[i])
                    |> Seq.toArray
         }
+        
+//===================================================//
 
-//////////
-//===================================================
 [<Struct;CustomComparison;CustomEquality>]
 type WeightPair<'a when 'a: comparison> =
     val Weight: float
@@ -152,7 +160,8 @@ type WeightPair<'a when 'a: comparison> =
             else this.Weight.CompareTo(other.Weight)
 
 //===================================================
-let rec dispTreeGeneric d maxDepth (fg: FastStringGraph) (visited: Set<string>) 
+
+let rec dispTreeGeneric d maxDepth (fg: IGraph<_,_,_>) (visited: Set<string>) 
         dashes spaces node =
     match (fg.GetEdges node,maxDepth) with
     | None,_ -> node
@@ -194,8 +203,20 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?trackweights) =
     let mutable edgeWeights =
         Dict<struct ('a * 'a),float>(HashIdentity.Structural)
     let track_weights = defaultArg trackweights false
+     
     member g.EdgeData = edges
+
+    member g.ForEach f =
+        let keys = g.Vertices
+        for k in keys do
+            edges.[k] <- f edges.[k]
     
+    member g.Filter f =
+        let keys = g.Vertices
+        for k in keys do
+            if f keys then
+                g.Remove k |> ignore
+                 
     member g.InsertRange(es,ews) =
         edges.Clear()
         edges <- es
@@ -270,8 +291,12 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?trackweights) =
     
     member g.ContainsEdge v1 v2 = maybe {let! elist0 = edges.tryFind v1
                                          return (elist0.Contains v2)}
+    
+    member g.GetEdgesRaw v = maybe {let! elist = edges.tryFind v
+                                    return elist}
+    
     member g.GetEdges v = maybe {let! elist = edges.tryFind v
-                                 return elist}
+                                 return [|for e in elist -> e.Node, e.Weight |]}
     
     member g.Edges =
         Hashset(g.EdgeData
@@ -329,7 +354,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?trackweights) =
                     else (v,i + 1,false)) (root,0,true)
         tree
     
-    member g.Vertices = Hashset(edges.Keys)
+    member g.Vertices = [|for k in edges.Keys -> k|]
     
     member g.dijkstra_full source =
         let dists = Dict.ofSeq [source,0.]
@@ -345,7 +370,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?trackweights) =
             nodeMap.Add(v,n)
         recurse (fun stop -> stop || FibHeap.size q <= 0) (fun _ -> 
             let next = FibHeap.extract_min_data q
-            let adjs = g.GetEdges next
+            let adjs = g.GetEdgesRaw next
             let _ = visited.Add next
             match adjs with
             | None -> false
@@ -384,7 +409,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?trackweights) =
             let next = FibHeap.extract_min_data q
             if next = target then true
             else 
-                let adjs = g.GetEdges next
+                let adjs = g.GetEdgesRaw next
                 let _ = visited.Add next
                 match adjs with
                 | None -> false
@@ -400,4 +425,89 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?trackweights) =
         |> ignore
         recurse (fst >> Option.isNone) 
             (fun ((Some p),l) -> prev.getOrDefault None p,p :: l) 
-            (Some target,[])
+            (Some target,[]) 
+    
+    interface IGraph<'a,'a * float,float> with
+        member g.Vertices = seq g.Vertices
+        member g.Edges = [||]
+        member g.WeightedEdges = g.Edges
+        member g.GetEdges n = g.GetEdges n
+
+module WeightedGraph = 
+    let map nodemap edgemap (g:WeightedGraph<_>) =
+        let newgraph = WeightedGraph<_>()
+        for (KeyValue(n,es)) in g.EdgeData do
+            newgraph.EdgeData.Add(nodemap n, edgemap es)
+        newgraph
+    let filter nodefilter edgefilter (g:WeightedGraph<_>) =
+        let newgraph = WeightedGraph<_>()
+        for (KeyValue(n,es)) in g.EdgeData do
+            if nodefilter n then
+                newgraph.EdgeData.Add(n, es |> Seq.filter edgefilter |> Hashset)
+        newgraph
+
+//////////////////////////// 
+
+let disp (template:string) isleftright svgid w h (vs,es) =
+    let rankdir = if isleftright then """rankdir: "LR",""" else ""
+    template
+        .Replace("__EDGES_HERE__", es)
+        .Replace("__NODES_HERE__",vs)
+        .Replace("svgid", svgid)
+        .Replace("svgwidth", string w)
+        .Replace("svgheight", string h)
+        .Replace("__RANK_DIR__", rankdir)
+
+let fixlen maxlen s =
+    if String.length s > maxlen then s.Replace(",", "\\n").Replace("/", "\\n")
+    else s 
+    
+let createDagreGraphGen maxlen str maxw h
+    (g : IGraph<_,_,_>) = 
+    let vs =
+        g.Vertices
+        |> Seq.map
+               (fun v ->
+               sprintf "g.setNode(%A, {label:'%s', width:%d, height:%d});" v
+                   (fixlen maxlen v) (min maxw ((String.length v) * 8)) h)
+        |> Strings.joinToStringWith "\n"
+
+    let es =
+        g.WeightedEdges 
+        |> Array.mapi
+               (fun i ((e1, e2), w) ->
+               sprintf "g.setEdge(%A, %A, {label: %A}, 'e%d')" e1 e2 (str w) i)
+        |> Strings.joinToStringWith "\n"
+
+    vs, es  
+ 
+let createDagreGraph str maxw h = createDagreGraphGen maxw str maxw h
+       
+type VizGraphNodeAndName = {
+    id: string;
+    name: string;
+    ``val`` : int
+}
+
+type VizGraphNode = {
+    id: string; 
+    ``val`` : int
+} 
+
+type VizGraphEdge = {
+    source: string;
+    target: string; 
+}
+
+type VizGraph =
+    { nodes: VizGraphNode seq
+      links: VizGraphEdge seq }
+    static member FromGraph(g: IGraph<_, _, _>) =
+        { nodes =
+              g.Vertices
+              |> Seq.map (fun v ->
+                  { id = v; ``val`` = 1 })
+          links =
+              g.WeightedEdges
+              |> Array.map (fun ((n1, n2), w) ->
+                  { source = n1; target = n2 }) }

@@ -84,14 +84,16 @@ let rec countTreeNodesCollapseBelow d n = function
      | Empty -> 0,Empty
 
 
-let dispTree f = foldTree ("",0) 
-                         (fun (s,n) -> s,n+1) 
-                         (fun (s,i) n -> s + "\n|" + String.replicate i "_" + f n,i) 
-                         (fun n l -> l |> List.fold (fun (s1,i1) (s2,i2) -> s1 + s2, max i1 i2) n)
+let dispTree f = 
+    foldTree ("",0) 
+        (fun (s,n) -> s,n+1) 
+        (fun (s,i) n -> s + "\n|" + String.replicate i "_" + f n,i) 
+        (fun n l -> 
+            l |> List.fold (fun (s1,i1) (s2,i2) -> s1 + s2, max i1 i2) n)
 
 
 let rec weightedGraphToTree (fg:WeightedGraph<_>) (visited:Set<string>) (node:WeightedNode<string>) = 
-    match (fg.GetEdges node.Node) with 
+    match (fg.GetEdgesRaw node.Node) with 
       | Some h when h.Count = 0 -> Node (node.Node,node.Weight)  
       | None -> Node (node.Node,node.Weight)  
       | Some edges  ->        
