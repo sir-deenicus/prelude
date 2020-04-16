@@ -5,86 +5,7 @@ open System
 open Prelude.Collections.FibonacciHeap
 open Prelude.SimpleGraphs
 open Microsoft.Collections.Extensions
- 
-type LabeledDirectedGraph<'a, 'b when 'a : equality and 'a : comparison>() =
-    let mutable edges = Dict<'a, Hashset<'a>>()
-    let mutable edgeWeights =
-        Dict<struct ('a * 'a), 'b>(HashIdentity.Structural)
 
-    member __.Clear() =
-        edges.Clear()
-        edgeWeights.Clear()
-
-    member g.EdgeData = edges
-
-    member g.InsertRange(es, ews) =
-        edges.Clear()
-        edges <- es
-        edgeWeights.Clear()
-        edgeWeights <- ews
-
-    member g.InsertVertex(s : 'a) =
-        let contained = edges.ContainsKey s
-        if not contained then edges.Add(s, Hashset())
-        contained
-
-    member g.InEdges v =
-        [| for (KeyValue(struct (a, b), _)) in edgeWeights do
-               if b = v then yield (a, b) |]
-
-    member g.Remove(v : 'a) =
-        match (edges.tryFind v) with
-        | None -> false
-        | Some elist ->
-            for vert2 in elist do
-                let node = struct (v, vert2)
-                match edgeWeights.tryFind node with
-                | Some _ -> ignore <| edgeWeights.Remove node
-                | _ -> ()
-            let removes = ResizeArray()
-            for (KeyValue(struct (a, b) as node, _)) in edgeWeights do
-                if b = v then
-                    edges.[a].Remove(b) |> ignore
-                    removes.Add(node)
-                    ()
-            for n in removes do
-                edgeWeights.Remove n |> ignore
-            edges.Remove v
-
-    member g.InsertEdge(v0, v1, w) =
-        maybe {
-            let! elist0 = edges.tryFind v0
-            let added1 = elist0.Add(v1)
-            ignore <| edgeWeights.ExpandElseAdd (struct (v0, v1)) id w
-            return (added1)
-        }
-
-    member g.AdjustEdge f v1 v2 =
-        match edgeWeights.tryFind (struct (v1, v2)) with
-        | None -> ()
-        | Some e -> edgeWeights.[struct (v1, v2)] <- f e
-
-    member g.ContainsVertex v = edges.ContainsKey v
-    member __.EdgeWeights = edgeWeights
-    member g.GetEdge v1 v2 = maybe { let! w = edgeWeights.tryFind
-                                                  (struct (v1, v2))
-                                     return w }
-    member g.ContainsEdge v1 v2 = maybe { let! elist0 = edges.tryFind v1
-                                          return (elist0.Contains v2) }
-    member g.GetEdges v = maybe { let! elist = edges.tryFind v
-                                  return elist }
-
-    member g.Edges =
-        Hashset(g.EdgeData
-                |> Seq.collect (fun (DictKV(v1, vs)) ->
-                       vs
-                       |> Seq.map
-                              (fun v2 -> (v1, v2), edgeWeights.[struct (v1, v2)])
-                       |> Seq.toArray)
-                |> Seq.toArray)
-        |> Seq.toArray
-
-    member g.Vertices = Hashset(edges.Keys)
 
 type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweights) =
     let mutable edges = Dict<'a, Hashset<WeightedNode<'a>>>()
@@ -169,13 +90,18 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?trackweig
         else None
 
     member __.EdgeWeights = edgeWeights
-    member g.GetEdgeWeight v1 v2 = maybe { let! w = edgeWeights.tryFind
-                                                        (struct (v1, v2))
-                                           return w }
-    member g.ContainsEdge v1 v2 = maybe { let! elist0 = edges.tryFind v1
-                                          return (elist0.Contains v2) }
-    member g.GetEdges v = maybe { let! elist = edges.tryFind v
-                                  return elist }
+
+    member g.GetEdgeWeight (v1, v2) = maybe { 
+                let! w = edgeWeights.tryFind (struct (v1, v2))
+                return w 
+            }
+    member g.ContainsEdge (v1, v2) = maybe { 
+                let! elist0 = edges.tryFind v1
+                return (elist0.Contains v2) }
+
+    member g.GetEdges v = 
+        maybe { let! elist = edges.tryFind v
+                return elist }
 
     member g.Edges =
         Hashset(g.EdgeData
@@ -444,7 +370,7 @@ type WeightedDirectedGraphCompressed<'a, 'b when 'a : equality and 'a : comparis
     member g.Vertices =
         [| for kv in vertices -> kv.Key |]
 
-type WeightedDirectedGraphBasic<'a, 'b when 'a : equality and 'a : comparison>() =
+type WeightedDirectedGraphGeneric<'a, 'b when 'a : equality and 'a : comparison>() =
     let mutable edges = Dict<'a, Dict<'a, 'b>>()
     member g.EdgeData = edges
 

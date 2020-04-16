@@ -5,12 +5,13 @@
     <Company />  
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions. .NET Core focused</Description>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="pairheap.fsx" />
     <Content Include="obsolete.txt" />
     <Compile Include="CollectionSlim.fs" />
     <None Include="some tests.fsx" />
@@ -27,7 +28,6 @@
     <Compile Include="Trie.fs" />
     <Compile Include="TrieStringSearch.fs" />
   </ItemGroup>
-  <ItemGroup />
   <ItemGroup>
     <PackageReference Include="Microsoft.Experimental.Collections" Version="1.0.6-e190117-3" />
   </ItemGroup>

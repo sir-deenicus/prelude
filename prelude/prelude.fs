@@ -155,11 +155,13 @@ let inline keepRight f (x,y) = f x , y
 let inline pairapply f (x,y) = (f x, f y) 
 
 let inline lessToLeft (a,b) = if a < b then a,b else b,a 
+
+let (>>.) f g x = f x; g x
    
 module Tuple = 
-    let triapply f (a,b,c) = f a, f b, f c 
+    let trimap f (a,b,c) = f a, f b, f c 
 
-    let quadapply f (a,b,c,d) = f a, f b, f c, f d
+    let quadmap f (a,b,c,d) = f a, f b, f c, f d
 
     let pair a b = a,b 
 
@@ -168,9 +170,11 @@ module Pair =
 
     let toArray (a,b) = [|a;b|]
 
-    let inline map op (x,y) (u,v) = (op x u, op y v)
+    let map f (x,y) = (f x, f y) 
 
-    let inline addPairs x y = map (+) x y
+    let inline join op (x,y) (u,v) = (op x u, op y v)
+
+    let inline addPairs x y = join (+) x y
 
     let inline apply op (x,y) = op x y  
 
@@ -394,10 +398,13 @@ let internal foldRow2D, foldCol2D = 1, 0
 let inline internal cIndex ind k i (m:'a [,]) = if ind = 1 then m.[k,i] else m.[i,k]
 
 module List =
-  let inline sortByDescending f = List.sortBy (fun x -> -1. * float(f x))
-  let inline normalizeWeights (l: ('a * 'b) list) = 
-      let tot = List.sumBy snd l
-      List.map (keepLeft (flip (/) tot)) l
+    let inline sortByDescending f = List.sortBy (fun x -> -1. * float(f x))
+    let inline normalizeWeights (l: ('a * 'b) list) = 
+        let tot = List.sumBy snd l
+        List.map (keepLeft (flip (/) tot)) l
+    let filterMap filter map xs =
+        [ for x in xs do
+                if filter x then yield map x ]
 
 type 'a ``[]`` with
   member self.LastElement = self.[self.Length - 1]
@@ -904,7 +911,12 @@ type System.Collections.Generic.List<'a> with
 
 module Seq =  
   let getEnumerator (sq:'a seq) = sq.GetEnumerator()
-
+ 
+  let minAndMaxBy f l =
+    let smallest = Seq.minBy f l
+    let largest = Seq.maxBy f l
+    f smallest, f largest 
+    
   let map3 f a b c = 
      let enuma,enumb,enumc = (getEnumerator a, getEnumerator b, getEnumerator c)
 
