@@ -228,8 +228,12 @@ type SetSlim<'k when 'k : equality and 'k :> IEquatable<'k>> =
     member m.Item(i) : 'k =
         m.entries.[i].key
 
-    member m.ToArray() =
-        Array.init m.count (fun i -> m.entries.[i].key)
+    member m.iter f = 
+        for i in 0..m.count - 1 do
+            f (m.entries.[i].key)
 
-    member m.ToList() =
+    member m.ToArray(f) =
+        Array.init m.count (fun i -> f m.entries.[i].key)
+
+    member m.ToList(f) =
         List.init m.count (fun i -> m.entries.[i].key)

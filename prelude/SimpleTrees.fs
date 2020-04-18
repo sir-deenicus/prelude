@@ -1,24 +1,70 @@
-﻿module SimpleTrees
+﻿module Prelude.SimpleTrees
 
 open Prelude.Common
 open Prelude.SimpleGraphs
 open System
 
 [<RequireQualifiedAccess>]
-type BinaryTree<'a> =
+type SimpleBinaryTree<'a> =
     | Node of 'a
-    | Branch of 'a BinaryTree * 'a BinaryTree
-
-type WeightedTree<'a,'b> =
-    | Node of 'a
-    | Branch of ('a * 'b) * WeightedTree<'a,'b> list
-    | Empty
-
+    | Branch of ('a SimpleBinaryTree * 'a SimpleBinaryTree)
+      
 type Tree<'a> =
     | Node of 'a
     | Branch of 'a * 'a Tree list
     | Empty
-    
+     
+let nodeName f =
+    function
+    | Empty -> ""
+    | Node n -> f n
+    | Branch(n, _) -> f n
+
+let getNode empty =
+    function
+    | Empty -> empty
+    | Node n -> n
+    | Branch(n, _) -> n
+
+//====================================
+
+module SimpleBinaryTree =
+    let rec flatten = function 
+        | SimpleBinaryTree.Node n -> [n]
+        | SimpleBinaryTree.Branch(l,r) ->
+            let leftlist, rightlist = flatten l, flatten r
+            if leftlist.Length < rightlist.Length then leftlist @ rightlist
+            else rightlist @ leftlist
+
+    let rec toTree defnode = function 
+        | SimpleBinaryTree.Node n -> Node n
+        | SimpleBinaryTree.Branch(l,r) -> 
+            Branch(defnode(), [toTree defnode l; toTree defnode r])
+
+    let rec toTree2 aggr = function 
+        | SimpleBinaryTree.Node n -> Node n
+        | SimpleBinaryTree.Branch(l,r) -> 
+            let flatl, flatr = flatten l, flatten r
+            Branch(aggr(flatl @ flatr), [toTree2 aggr l; toTree2 aggr r])
+////////////////////////////////////////////////////////////
+
+let rec depthFirstInsert f node =
+    function
+    | Node(n) ->
+        if f n then Branch(n, [ node ])
+        else Node n
+    | Empty -> node
+    | Branch(n, nodes) ->
+        if f n then Branch(n, node :: nodes)
+        else
+            let nodes' =
+                nodes
+                |> List.map (depthFirstInsert f node)
+                |> List.filter ((<>) Empty)
+            match nodes' with
+            | [] -> Empty
+            | tree -> Branch(n, tree)
+            
 let rec depthFirstMap f =
     function
     | Node(n) -> Node(f n)
@@ -30,8 +76,7 @@ let rec depthFirstMap f =
 let rec depthFirstFilter keepChild f =
     function
     | Node(n) ->
-        if f n then Node(n)
-        else Empty
+        if f n then Node(n) else Empty
     | Empty -> Empty
     | Branch(n, nodes) ->
         if f n then
@@ -45,23 +90,42 @@ let rec depthFirstFilter keepChild f =
             match nodes' with
             | [] -> Empty
             | tree -> Branch(n, tree)
+            
+let rec find f =
+    function
+    | Node(n) ->
+        if f n then [n] else []
+    | Empty -> []
+    | Branch(n, nodes) ->
+        if f n then [n]
+        else
+            let res =
+                List.tryPick (fun t ->
+                    match find f t with
+                    | [] -> None
+                    | p -> Some p) nodes
+            match res with
+            | None -> []
+            | Some path -> n::path
 
-let rec mergeTree =
+//====================================
+
+let rec collapseTree =
     function
     | Node(n) -> [ Node n ]
     | Empty -> []
     | Branch(n, nodes) ->
-        let nodes' = nodes |> List.collect (mergeTree)
+        let nodes' = nodes |> List.collect (collapseTree)
         Node n :: nodes'
 
-let rec mergeTreeBelowDepth maxd d =
+let rec collapseTreeBelowDepth maxd d =
     function
     | Branch(n, bs) when d < maxd ->
-        Branch(n, List.map (mergeTreeBelowDepth maxd (d + 1)) bs)
+        Branch(n, List.map (collapseTreeBelowDepth maxd (d + 1)) bs)
     | Node _ as n -> n
     | Empty as n -> n
     | Branch(_, _) as branch when d >= maxd ->
-        match mergeTree branch with
+        match collapseTree branch with
         | Node n :: ns -> Branch(n, ns)
         | [ n ] -> n
         | _ -> Empty //shouldn't happen      
@@ -88,25 +152,26 @@ let rec countTreeNodes =
     | Branch(_, bs) ->
         let tots, brs = List.map (countTreeNodes) bs |> List.unzip
         let sum = List.sum tots
-        printfn "%A" (tots, sum)
         sum + 1, Branch(sum, brs)
     | Node _ -> 1, Node 0
     | Empty -> 0, Empty
 
-let rec countTreeNodesCollapseBelow d n =
+let rec countTreeNodesAndCollapseBelow depth n =
     function
-    | Branch(_, bs) when n > d ->
+    | Branch(_, bs) when n > depth ->
         let tots, _ =
-            List.map (countTreeNodesCollapseBelow d (n + 1)) bs |> List.unzip
+            List.map (countTreeNodesAndCollapseBelow depth (n + 1)) bs |> List.unzip
         let sum = List.sum tots
         sum + 1, Node sum
     | Branch(_, bs) ->
         let tots, brs =
-            List.map (countTreeNodesCollapseBelow d (n + 1)) bs |> List.unzip
+            List.map (countTreeNodesAndCollapseBelow depth (n + 1)) bs |> List.unzip
         let sum = List.sum tots
         sum + 1, Branch(sum, brs)
     | Node _ -> 1, Node 0
     | Empty -> 0, Empty
+
+//====================================
 
 let dispTree f =
     foldTree ("", 0) 
@@ -114,65 +179,48 @@ let dispTree f =
         (fun (s, i) n -> s + "\n|" + String.replicate i "_" + f n, i)
         (fun n l ->
             l |> List.fold (fun (s1, i1) (s2, i2) -> s1 + s2, max i1 i2) n)
+                
+let graphToTreeWith prjfst getEdges (node : _) =
+    let rec loop (visited : Set<_>) node =
+        match (getEdges (prjfst node)) with
+        | Some es when Array.isEmpty es -> Node node
+        | None -> Node node
+        | Some edges ->
+            let children =
+                edges 
+                |> Array.filterMap 
+                    (prjfst >> visited.Contains >> not)
+                    (loop (visited.Add (prjfst node)))
+            if children.Length = 0 then Node node
+            else Branch(node, List.ofArray children) 
+    loop Set.empty node
 
-let rec weightedGraphToTree (fg : WeightedGraph<_>) (visited : Set<string>)
-        (node : WeightedNode<string>) =
-    match (fg.GetEdgesRaw node.Node) with
-    | Some h when h.Count = 0 -> Node(node.Node, node.Weight)
-    | None -> Node(node.Node, node.Weight)
-    | Some edges ->
-        let children =
-            edges
-            |> Seq.toArray
-            |> Array.filterMap 
-                (fun w -> w.Node |> visited.Contains |> not)
-                (fun e -> weightedGraphToTree fg (visited.Add node.Node) (e))
-        if children.Length = 0 then Node(node.Node, node.Weight)
-        else Branch((node.Node, node.Weight), List.ofArray children)
+let weightedGraphToTree (fg : IWeightedGraph<_, _>) node0 = graphToTreeWith fst fg.GetWeightedEdges node0
 
-let rec weightedGraphToTree2 (fg : IGraph<_,_,_>) (visited : Set<_>)
-        ((node,w) : _) =
-    match (fg.GetEdges node) with
-    | Some es when Array.isEmpty es -> WeightedTree.Node node
-    | None -> WeightedTree.Node node
-    | Some edges ->
-        let children =
-            edges
-            |> Seq.toArray
-            |> Array.filterMap 
-                (fun (n',_) -> n' |> visited.Contains |> not)
-                (fun e -> weightedGraphToTree2 fg (visited.Add node) e)
-        if children.Length = 0 then WeightedTree.Node node
-        else WeightedTree.Branch((node,w), List.ofArray children)
-
-let rec depthFirstInsert f node =
-    function
-    | Node(n) ->
-        if f n then Branch(n, [ node ])
-        else Node n
-    | Empty -> node
-    | Branch(n, nodes) ->
-        if f n then Branch(n, node :: nodes)
-        else
-            let nodes' =
-                nodes
-                |> List.map (depthFirstInsert f node)
-                |> List.filter ((<>) Empty)
-            match nodes' with
-            | [] -> Empty
-            | tree -> Branch(n, tree)
-
-let nodeNameStr f =
-    function
-    | Empty -> ""
-    | Node n -> f n
-    | Branch(n, _) -> f n
-
-let rec treeToVerticesAndEdges parentNode =
+let graphToTree (fg : IGraph<_>) node0 = graphToTreeWith id fg.GetEdges node0
+ 
+let rec toVerticesAndEdges parentNode =
     function
     | Node n -> [ n ], [ (parentNode, n) ]
-    | Branch(n, bs) ->
-        let g = bs |> List.map (treeToVerticesAndEdges n)
-        let vs, es = List.unzip g
-        n :: List.concat vs, (parentNode, n) :: List.concat es
+    | Branch(n, branches) ->
+        let g = List.map (toVerticesAndEdges n) branches
+        let ns, es = List.unzip g
+        n :: List.concat ns, (parentNode, n) :: List.concat es
     | Empty -> [], []
+    
+let rec toEdges parentNode =
+    function
+    | Node n -> [ (parentNode, n) ]
+    | Branch(n, branches) ->
+        let es = List.map (toEdges n) branches
+        (parentNode, n) :: List.concat es
+    | Empty -> []
+
+let rec flattenWithShortPathBias =
+    function
+    | Node n -> [ n ]
+    | Branch(n, branches) ->
+        let ns = List.map flattenWithShortPathBias branches
+        n :: (ns |> List.sortBy List.length |> List.concat)
+    | Empty -> []
+      

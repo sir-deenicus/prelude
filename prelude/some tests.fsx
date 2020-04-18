@@ -12,8 +12,8 @@
 #time "on"
 #nowarn "1125"
 
-#r @"bin\Release\net45\System.Memory.dll"
-#r @"bin\Release\net45\Prelude-Standard.dll"
+//#r @"bin\Release\net47\System.Memory.dll"
+#r @"bin\Release\net47\Prelude.dll"
 
 open Prelude.Math
 open System
@@ -23,6 +23,90 @@ open Prelude.TrieDictionarySearch
 open System.Net
 open Prelude.SimpleGraphs
 open Prelude.StringMetrics
+
+open Prelude.SimpleTrees
+open Prelude.Common.Strings
+open Prelude.SimpleDirectedGraphs
+open Prelude
+
+let g1 = DirectedGraph<int>()
+
+for i in 0..5 do g1.InsertVertex i
+
+g1.InsertEdge(5,2)
+g1.InsertEdge(5,0)
+g1.InsertEdge(4,0)
+g1.InsertEdge(4,1)
+g1.InsertEdge(2,3)
+g1.InsertEdge(3,1)
+
+let g2 = DirectedGraph<char>()
+
+for c in 'A'..'F' do g2.InsertVertex c
+
+g2.InsertEdge('A','B')
+g2.InsertEdge('A','D') 
+g2.InsertEdge('B','C')
+g2.InsertEdge('C','D')
+g2.InsertEdge('C','E')
+g2.InsertEdge('D','E')
+g2
+
+let g3 = DirectedGraph<int>()
+
+for v in [5;11;2;7;8;9;3;10] do g3.InsertVertex v
+
+g3.InsertEdge(5,11)
+g3.InsertEdge(11,2)
+g3.InsertEdge(7,11)
+g3.InsertEdge(7,8)
+g3.InsertEdge(8,9)
+g3.InsertEdge(3,8)
+g3.InsertEdge(3,10)
+g3.InsertEdge(11,9)
+g3.InsertEdge(11,10)
+
+
+let g0 = WeightedDirectedGraph<string>()
+
+g0.InsertVertex "A"
+g0.InsertVertex "B"
+g0.InsertVertex "C"
+g0.InsertVertex "D"
+g0.InsertVertex "E"
+g0.InsertEdge("A", "B" , 2.)
+g0.InsertEdge("A", "C" , 3.)
+g0.InsertEdge("C", "D" , 1.)
+g0.InsertEdge("D", "E" , 1.)
+g0.InsertEdge("C", "E" ,5.)
+
+
+let (Choice1Of2 tc) = GraphAlgorithms.minimumSpanningTree g0
+
+tc
+
+let (Ok order) = GraphAlgorithms.topologicalSort g0
+
+GraphAlgorithms.shortestPath order g0 "A"
+|> snd 
+|> readOffPath "E"  
+
+ 
+
+weightedGraphToTree g0 ("C", 0.)
+|> find (fst >> (=) "D")
+
+|> dispTree string
+
+|> linearizeWithShortPathsBias
+
+ 
+Branch("B", [Node "A"; Branch("C", [Node "D"; Branch("E", [Node "E1"])]); Node "F"])
+|> dispTree id
+|> find ((=) "E")
+
+//|> SimpleTrees.dispTree id
+|> treeToVerticesAndEdges ""
 
 (*
 let commaNumber (ToString str) = 

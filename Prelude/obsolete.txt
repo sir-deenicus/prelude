@@ -192,3 +192,85 @@ type FastStringGraphIntIndexed() =
                    |> Seq.map(fun i -> vertdata.[i])
                    |> Seq.toArray
         }
+
+////////////////
+Binary trees are a useful test ground but not helpful
+
+module BinaryTree =
+    let rec depthFirstInsert find node =
+        function
+        | BinaryTree.Node(n) as t ->
+            if find n then 
+                BinaryTree.Branch(n, (node, BinaryTree.Empty))
+            else t
+        | BinaryTree.Empty -> node
+        | BinaryTree.Branch(n, (l,BinaryTree.Empty)) when find n ->
+            BinaryTree.Branch(n, (l,node))
+        | BinaryTree.Branch(n, (BinaryTree.Empty,r)) when find n ->
+            BinaryTree.Branch(n, (node,r))
+        | BinaryTree.Branch(n, _) when find n ->
+            failwith "Already occupied"
+        | BinaryTree.Branch(n, (l,r)) -> 
+            BinaryTree.Branch(n, (depthFirstInsert find node l, depthFirstInsert find node r))
+
+    let rec depthFirstMap f =
+        function
+        | BinaryTree.Node(n) -> BinaryTree.Node(f n)
+        | BinaryTree.Empty -> BinaryTree.Empty
+        | BinaryTree.Branch(n, (l,r)) -> 
+            BinaryTree.Branch(f n, (depthFirstMap f l, depthFirstMap f r))
+
+    let rec find f = function 
+        | BinaryTree.Node(n) ->
+            if f n then [n]
+            else []
+        | BinaryTree.Empty -> []
+        | BinaryTree.Branch(n, (l,r)) ->
+            if f n then [n]
+            else 
+                match find f l with
+                | [] -> 
+                    match find f r with
+                    | [] -> []
+                    | path -> n::path
+                | path -> n::path
+
+    let rec depthFirstFilter keepChild f =
+        function
+        | BinaryTree.Node(n) ->
+            if f n then BinaryTree.Node(n)
+            else BinaryTree.Empty
+        | BinaryTree.Empty -> BinaryTree.Empty
+        | BinaryTree.Branch(n, (l,r)) as t ->
+            if f n then
+                if keepChild then t
+                else BinaryTree.Node(n)
+            else 
+                match depthFirstFilter keepChild f l, depthFirstFilter keepChild f r with
+                | BinaryTree.Empty, BinaryTree.Empty -> BinaryTree.Empty
+                | tree -> BinaryTree.Branch(n, tree)
+
+    let rec toTree = function 
+        | BinaryTree.Node n -> Node n
+        | BinaryTree.Empty -> Empty
+        | BinaryTree.Branch(n, (l,r)) -> 
+            Branch(n, [toTree l; toTree r])
+
+////////////
+Shortest path on DAG
+
+let shortestPath (order:'a[]) (g:IWeightedGraph<'a,_>) (s:'a) =
+    if not g.IsDirected then failwith "Not directed"
+    let subpath = Array.skipWhile ((<>) s) order
+    let d = Array.map (fun n -> n, Double.MaxValue) subpath |> Dict.ofSeq
+    d.[s] <- 0.
+    let p = Dict()
+    for u in subpath do
+        match g.GetWeightedEdges u with 
+        | None -> ()
+        | Some vs ->
+            for (v,w) in vs do 
+                if d.[v] > d.[u] + w then
+                    d.[v] <- d.[u] + w
+                    p.ExpandElseAdd v (fun _ -> u) u
+    d, p

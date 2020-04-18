@@ -15,7 +15,6 @@
     <Content Include="obsolete.txt" />
     <Compile Include="CollectionSlim.fs" />
     <None Include="some tests.fsx" />
-    <Compile Include="pseq.fs" />
     <Compile Include="prelude.fs" />
     <Compile Include="math.fs" />
     <Compile Include="onlinelearning.fs" />
@@ -24,6 +23,7 @@
     <Compile Include="SimpleGraph.fs" />
     <Compile Include="SimpleDirectedGraph.fs" />
     <Compile Include="SimpleTrees.fs" />
+    <Compile Include="GraphAlgorithms.fs" />
     <Compile Include="StringMetrics.fs" />
     <Compile Include="Trie.fs" />
     <Compile Include="TrieStringSearch.fs" />
