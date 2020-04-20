@@ -23,7 +23,7 @@ let inline isPowerOf2 (ToFloat x) =
 
 //***************************BASIC STATS******************//
 module Stats =
-    type SimpleStatsInfo =
+    type SummaryStats =
         { Mean : float
           Sum : float
           Stddev : float
@@ -31,25 +31,17 @@ module Stats =
           Min : float
           Max : float
           Median : float }
-    
-    ///simpleStats specific
-    let pearsonsCorr (_, _, cov, vx, vy) = cov / (sqrt vx * sqrt vy)
-    
-    let t_statistic r N = r / sqrt ((1. - r ** 2.) / (N - 2.))
-    
-    let invchi chi df =
-        let m = chi / 2.0
-        let term = exp -m
-        
-        let _, sum, _ =
-            recurse (third
-                     >> int
-                     >> ((<=) (df / 2))) 
-                (fun (t, s, i) -> 
-                    let t' = t * m / i
-                    t', s + t', i + 1.) (term, term, 1.)
-        min sum 1.0
-    
+
+    type SimpleStatsInfo =
+        { Slope : float; 
+          Intercept : float; 
+          Covariance : float; 
+          VarianceX : float; 
+          VarianceY : float}
+     
+    let pearsonsCorr (stats:SimpleStatsInfo) = 
+        stats.Covariance / (sqrt stats.VarianceX * sqrt stats.VarianceY)
+         
     let cdf p =
         p
         |> Array.fold (fun (total, list) v -> 
@@ -82,7 +74,8 @@ module Stats =
         let len = float vec.Length
         let cov, varx, vary = cov_ / len, varx_ / len, vary_ / len
         let beta = cov / varx
-        beta, ym - beta * xm, cov, varx, vary
+        {Slope = beta; Intercept = ym - beta * xm; 
+         Covariance = cov; VarianceX = varx; VarianceY = vary}
     
     let meanDifference (v : float []) =
         let n, nl = float v.Length, v.Length
@@ -166,7 +159,7 @@ module Stats =
         let y = float (f point)
         alpha * y + (1. - alpha) * eavg
     
-    let statsInfo (x : float seq) =
+    let summaryStats (x : float seq) =
         { Sum = Seq.sum x
           Mean = Seq.average x
           Stddev = stddev x
@@ -232,32 +225,21 @@ module Stats =
         if vsig = 0. then 0.
         else sqrt ((distCovariance v1 v2 false) / sqrt vsig)
 
-//***************************PERMUTATIONS AND CHANCE******************//
-//let rec partitions = function                                     
-//  | 0 -> []
-//  | n ->                 
-//    let k = [1] :: partitions (n-1)                           
-//    [for p in k do           
-//      yield [1] @ p
-//      if p.Length  < 2 || p.Tail.Head > p.Head then
-//       yield [p.Head + 1] @ p.Tail]
-///n is integer, k number of summands              
-let rec num_partitions =
-    function 
-    | (k, n) when k > n -> 0.
-    | (k, n) when k = n -> 1.
-    | k, n -> num_partitions (k + 1., n) + num_partitions (k, n - k)
+//***************************PERMUTATIONS AND CHANCE******************// 
 
-let facI n = [ 2I..n ] |> List.fold (*) 1I
-let permsI n k = [ (n - k + 1I)..n ] |> List.fold (*) 1I
+
+let facBigInt n = [ 2I..n ] |> List.fold (*) 1I
+
+let permutationsBigInt n k = [ (n - k + 1I)..n ] |> List.fold (*) 1I
+
 let fac n = [ 2.0..n ] |> List.fold (*) 1.
 
 ///num permutations of length n taken k at a time     
-let perms n k = [ (n - k + 1.)..n ] |> List.fold (*) 1.
+let permutations n k = [ (n - k + 1.)..n ] |> List.fold (*) 1.
 
 ///num permutations of length n taken k at a time where order does not matter
 ///let combinations n k = fac n / (fac k * fac (n - k))
-let combinations n k = perms n k / fac k
+let combinations n k = permutations n k / fac k
 
 //This is brilliant! From Harrop's F# for Scientists
 let rec powerset s =

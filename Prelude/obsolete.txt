@@ -274,3 +274,70 @@ let shortestPath (order:'a[]) (g:IWeightedGraph<'a,_>) (s:'a) =
                     d.[v] <- d.[u] + w
                     p.ExpandElseAdd v (fun _ -> u) u
     d, p
+
+/////////////
+
+Find sentence terminating punctuations. Utility minimal but worth storing.
+
+let findSentenceTerminus lookforward numtake i s = 
+	let strmax = String.length s - 1
+	if lookforward && i = strmax || not lookforward && i = 0 then (0,[])
+	else recurse fst3
+			(fun (_,(seen,seens),n) ->        
+				let found =
+				if n < 0 || n >= strmax then false
+				else let c = s.[n]  
+						c = '?' || c = '!'  || c = '\n' 
+							|| (c = '\r' && n < strmax && s.[n + 1] <> '\n') 
+							|| (c = '.' && n > 0 
+										&& not (Char.IsDigit s.[n - 1]) 
+										&& (n = strmax || n < strmax && not (Char.IsDigit s.[n + 1]))
+										&& n > 1 && not((s.[n-2] = '.' && n < strmax - 1 && s.[n + 2] = '.') || Char.IsUpper s.[n-2])
+												&& not(s.[n-2] = 'w' && s.[n-1] = 'w')
+										&& n < strmax - 1 && s.[n+2] <> '.'
+										&& n < strmax - 2 && not(s.[n+3] = 'f' && s.[n+2] = 'd'&& s.[n+1] = 'p') 
+															&& not(s.[n+3] = 'm' && s.[n+2] = 't' && s.[n+1] = 'h'))
+            
+				found && seen+1 = numtake || (if lookforward then n >= strmax else n < 0), 
+				(if found || (lookforward && n = strmax || n = 0 && not lookforward) then (seen + 1,n::seens) else (seen, seens)), 
+				(if lookforward then n + 1 else n - 1)) (false,(0,[]),i) |> snd3 
+ 
+//printfn "%A %A %A" (if n > 0 then s.[n] else ' ') n (found || (lookforward && n = strmax || n = 0 && not lookforward))
+            
+let (n,[i]) = findSentenceTerminus true 1 0 "bolt the door. quick in here. who goes there."
+let (n2,[i2]) = findSentenceTerminus true 1 (i+1) "bolt the door. quick in here. who goes there."
+let (n3,[i3]) = findSentenceTerminus true 1 (i2+1) "bolt the door. quick in here. who goes there."
+
+findSentenceTerminus true 2 (i2+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus true 2 (i+1) "bolt the door. quick in here. who goes there."
+
+findSentenceTerminus false 1 0 "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 1 5 "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 1 (i+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 2 (i+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 3 (i+1) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 3 (44) "bolt the door. quick in here. who goes there."
+findSentenceTerminus false 2 44 "bolt the door. quick in here. who goes there."     
+
+"bolt the door. quick in here. who goes there.".[..i]
+"bolt the door. quick in here. who goes there.".[i+1..i2]
+"bolt the door. quick in here. who goes there.".[i2+1..i3]
+
+/////////
+
+Too specialist, use a library instead.
+
+let t_statistic r N = r / sqrt ((1. - r ** 2.) / (N - 2.))
+    
+let invchi chi df =
+    let m = chi / 2.0
+    let term = exp -m
+        
+    let _, sum, _ =
+        recurse (third
+                    >> int
+                    >> ((<=) (df / 2))) 
+            (fun (t, s, i) -> 
+                let t' = t * m / i
+                t', s + t', i + 1.) (term, term, 1.)
+    min sum 1.0
