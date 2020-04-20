@@ -8,20 +8,26 @@ type IGraph<'Node> =
     abstract Vertices : seq<'Node> 
     abstract Edges : ('Node * 'Node) [] 
     abstract IsDirected : bool  
+    abstract RawEdgeData : unit -> Dict<'Node, Hashset<'Node>>
     abstract AddNode : 'Node -> unit
-    abstract GetEdges : 'Node -> 'Node [] option
-    abstract GetNodeNeighborCounts : unit -> ('Node * int) []
-
+    abstract GetNeighbors : 'Node -> 'Node [] option
+    abstract GetNodeNeighborCounts : unit -> ('Node * int) [] 
+    abstract GetNodeNeighborCount : 'Node -> int option
+    abstract HasCycles : bool option 
+     
 type IWeightedGraph<'Node, 'Weight> =
     inherit IGraph<'Node> 
     abstract WeightedEdges : (('Node * 'Node) * 'Weight) [] 
+    abstract RawEdgeWeightData : unit -> Dict<'Node, Dict<'Node, 'Weight>>
     abstract GetWeightedEdges : 'Node -> ('Node * 'Weight) [] option 
     abstract InsertWeightedEdge : ('Node*'Node*'Weight) -> unit
-    abstract GetRawEdges : 'Node -> IDict<'Node,'Weight> option
+    abstract GetRawEdges : 'Node -> Dict<'Node,'Weight> option
+    abstract IsWeightNormalized : bool
+    abstract ApplyToEdges : ('Weight -> 'Weight) -> unit
 
 type UndirectedGraph<'a when 'a: equality and 'a: comparison>() = 
     let edges = Dict<'a,'a Hashset>()
-    member g.EdgeData = edges  
+    member g.EdgeData = edges   
     
     member g.InsertVertex(v) =
         let contained = edges.ContainsKey v
@@ -76,14 +82,20 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
 
     member g.NodeNeighborCounts () = 
         [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count |]  
-
+    
+    member g.NodeNeighborCount v = 
+        Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.tryFind v)
+         
     interface IGraph<'a> with
         member g.Vertices = seq g.Vertices
         member g.Edges = g.Edges  
-        member g.GetEdges n = g.GetEdges n
+        member g.GetNeighbors n = g.GetEdges n
         member g.IsDirected = false  
+        member g.RawEdgeData() = g.EdgeData 
+        member g.HasCycles = None
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
-        member g.AddNode v = g.InsertVertex v |> ignore
+        member g.GetNodeNeighborCount v = g.NodeNeighborCount v
+        member g.AddNode v = g.InsertVertex v |> ignore 
 //===================================================//
 
 [<Struct;CustomComparison;CustomEquality>]
@@ -130,12 +142,17 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     let mutable edgeWeights =
         Dict<struct ('a * 'a),float>(HashIdentity.Structural)
     let dofastweights = defaultArg fastweights false
-     
+    let mutable weightnormalized = false
+
+    member g.WeightNormalized
+        with get () = weightnormalized
+        and set wn = weightnormalized <- wn
+      
     member g.EdgeData = edges 
 
     member g.ForEachEdge f =
-        for KeyValue(v, vs) in edges do
-            for KeyValue(v2, w) in vs do
+        for (v, vs) in keyValueSeqtoPairArray edges do
+            for (v2, w) in keyValueSeqtoPairArray vs do
                 edges.[v].[v2] <- f w
 
     member g.RemoveVerticesWhere f =
@@ -259,9 +276,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         let! elist = edges.tryFind v
         return elist}
     
-    member g.GetEdges v = maybe {
-        let! elist = edges.tryFind v
-        return [|for KeyValue(node,weight) in elist -> node, weight |]}
+    member g.GetEdges v = Option.map keyValueSeqtoPairArray (g.GetEdgesRaw v)
     
     member g.Edges = 
         [|for KeyValue(v1,vs) in g.EdgeData do
@@ -271,6 +286,9 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     
     member g.NodeNeighborCounts() = 
         [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count |] 
+
+    member g.NodeNeighborCount v = 
+        Option.map (fun (vs:Dict<_,_>) -> vs.Count) (edges.tryFind v)
 
     member g.OrderedEdges =
         let sorted = Collections.Generic.SortedSet() 
@@ -369,103 +387,17 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         member g.Vertices = seq g.Vertices
         member g.Edges = Array.map fst g.Edges
         member g.WeightedEdges = g.Edges
-        member g.GetEdges n = g.GetEdges n |> Option.map (Array.map fst)
+        member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
         member g.GetWeightedEdges n = g.GetEdges n
         member g.IsDirected = false
+        member g.RawEdgeData() = Dict.ofSeq [|for KeyValue(k,v) in g.EdgeData -> k, Hashset(v.Keys)|]  
+        member g.RawEdgeWeightData() = g.EdgeData 
         member g.AddNode v = g.InsertVertex v |> ignore
         member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
-        member g.GetRawEdges v =  
-            g.GetEdgesRaw v 
-            |> Option.map (fun d -> d :> IDict<'a,float>)  
-            
+        member g.GetRawEdges v = g.GetEdgesRaw v  
+        member g.IsWeightNormalized = weightnormalized
+        member g.HasCycles = None
+        member g.GetNodeNeighborCount v = g.NodeNeighborCount v
+        member g.ApplyToEdges f = g.ForEachEdge f
 
-////////////////////////////  
-
-let rec dispTreeGeneric d maxDepth (fg: IGraph<_>) (visited: Set<_>) 
-        dashes spaces node =
-    match (fg.GetEdges node,maxDepth) with
-    | None,_ -> node
-    | _,Some n when d >= n -> node
-    | Some edges,_ -> 
-        let children =
-            edges 
-            |> Array.filterMap (visited.Contains >> not) 
-                   (fun e -> 
-                   spaces + "|" 
-                   + (dispTreeGeneric (d + 1) maxDepth fg (visited.Add node) 
-                          (dashes + "-") (spaces + "|  ") e))
-        dashes + node + "\n" 
-        + (children |> Strings.joinToStringWith Strings.newLine)
-
-/// renders a graph that is a tree as a string.
-let dispStringTree d maxDepth g node =
-    dispTreeGeneric d maxDepth g Set.empty "-" " " node 
-
-let disp (template:string) isleftright svgid w h (vs,es) =
-    let rankdir = if isleftright then """rankdir: "LR",""" else ""
-    template
-        .Replace("__EDGES_HERE__", es)
-        .Replace("__NODES_HERE__",vs)
-        .Replace("svgid", svgid)
-        .Replace("svgwidth", string w)
-        .Replace("svgheight", string h)
-        .Replace("__RANK_DIR__", rankdir)
-
-//====================================
-
-let fixlen maxlen s =
-    if String.length s > maxlen then s.Replace(",", "\\n").Replace("/", "\\n")
-    else s 
-    
-let createDagreGraphGen fixlen str maxw h
-    (g : IWeightedGraph<_,_>) = 
-    let vs =
-        g.Vertices
-        |> Seq.map
-               (fun v ->
-               sprintf "g.setNode(%A, {label:'%s', width:%d, height:%d});" v
-                   (fixlen v) (min maxw ((String.length v) * 8)) h)
-        |> Strings.joinToStringWith "\n"
-
-    let es =
-        g.WeightedEdges 
-        |> Array.mapi
-               (fun i ((e1, e2), w) ->
-               sprintf "g.setEdge(%A, %A, {label: %A}, 'e%d')" e1 e2 (str w) i)
-        |> Strings.joinToStringWith "\n"
-
-    vs, es  
- 
- //====================================
-
-let createDagreGraph str fixlen maxw h = createDagreGraphGen fixlen str maxw h
-       
-type ForceGraphNodeAndName = {
-    id: string;
-    name: string;
-    ``val`` : int
-}
-
-type ForceGraphNode = {
-    id: string; 
-    ``val`` : int
-} 
-
-type ForceGraphEdge = {
-    source: string;
-    target: string; 
-}
-
-type ForceGraph =
-    { nodes: ForceGraphNode seq
-      links: ForceGraphEdge seq }
-    static member FromGraph(g: IGraph<_>) =
-        { nodes =
-              g.Vertices
-              |> Seq.map (fun v ->
-                  { id = v; ``val`` = 1 })
-          links =
-              g.Edges
-              |> Array.map (fun (n1, n2) ->
-                  { source = n1; target = n2 }) }

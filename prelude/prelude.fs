@@ -279,7 +279,7 @@ let third_fourth (_,_,c,d) = c,d
 let keyValueToKey (kv:KeyValuePair<_,_>) = kv.Key
 let keyValueToValue (kv:KeyValuePair<_,_>) = kv.Value  
 let keyValueToPair (kv:KeyValuePair<_,_>) = kv.Key, kv.Value  
-let keyValueSeqtoPairArray s = s |> Seq.map keyValueToPair |> Seq.toArray
+let keyValueSeqtoPairArray s = [|for KeyValue(k,v) in s -> k, v|]
 
 let (|DictKV|) (kv : KeyValuePair<'a,'b>) = kv.Key , kv.Value
 
@@ -407,128 +407,158 @@ module List =
                 if filter x then yield map x ]
 
 type 'a ``[]`` with
-  member self.LastElement = self.[self.Length - 1]
+  member self.LastElement = self.[self.Length - 1]  
   member self.nthFromLast(i) = self.[self.Length - i - 1]
+   
 
-type Array with 
-  static member rot places a =
-      let n = Array.length a  
-      a |> Array.permute (fun i -> 
-            let modulo = ((i + places) % n)                          
-            if i + places < 0 && modulo <> 0 then n + modulo else modulo)    
+module Array =
+    let dropLast n (a : _ []) = a.[..a.Length - 1 - n]
 
-  static member firstOrZero def (a:'a[]) = if a.Length = 0 then def else a.[0]
-  
-  static member inline lift x = [|x|]
-  static member pairNexts (a : 'a []) = [|for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1]|]
-
-  static member inline sortByDescending f = Array.sortBy (fun x -> -1. * float(f x)) 
-  static member inline sortByDescendingLinq f (a:'a []) = a.OrderByDescending (System.Func<_,_> f) |> Array.ofSeq   
- 
-  static member inline lastElement (a:'a []) = a.[a.Length - 1]
-  static member inline nthFromLastElement i (a:'a []) = a.[a.Length - i - 1]
-  static member inline get2 loc (a:'a[]) = a.[loc] 
-  static member inline countElements array = array |> Array.fold Map.Incr Map.empty 
-  static member countElementsMapThenFilter f filter array = 
-       array |> Array.fold (fun counts item -> 
-                            let item' = f item 
-                            if filter item' then Map.Incr counts item' else counts) Map.empty
-
-  static member countAndMax array =  
-     let counts = array |> Array.countElements 
-     counts, counts |> (Seq.maxBy keyValueToValue) |> keyValueToPair
-  
-  static member takeAtPercent p (a: 'a []) = let len = float a.Length in a.[..max 0 (int(round(p * len)) - 1)]
-  static member mapFilter f cond (seqs:'a[]) = [|for el in seqs do let mapped = f el in if cond mapped then yield mapped|] 
-  static member sub2 start ends (arr:'a []) = arr.[start..ends]
-  static member filterMap cond f seqs = [|for el in seqs do if cond el then yield f el|]
-  static member splitEvenly ways (arr:'a[]) =
-                 let steps = max (arr.Length / ways) 1
-                 [| for i in 0..steps..arr.Length - steps -> arr.[i..i + steps - 1]|]
-
-  static member split_TakeN_atATime n (arr : 'a []) =  
-    let steps = n
-    let len = arr.Length - 1
-    [| for i in 0..steps..arr.Length - 1 -> arr.[i..min (i + steps - 1) len]|]
-
-  static member splitByPercent p (array : 'a []) = 
-    let take = int(float(array.Length) * p)
-    array.[0..take], array.[take+1..array.Length-1] 
-
-module Array =         
-    let sub3 n (a:'a[]) = a.[min n (a.Length - 1)..]
-    let dropLast n (a:_ []) =
-        a.[..a.Length - 1 - n]
-    let swapAtIndex i j (arr:'a[]) =
+    let swapAtIndex i j (arr : 'a []) =
         let k = arr.[i]
         arr.[i] <- arr.[j]
         arr.[j] <- k
 
-    let getColJagged col (arr:'a [][]) = [|for row in 0..arr.Length - 1 -> arr.[row].[col]|] 
-    
-    ///e.g. ["a";"b";"c"] -> "a,b and c"
-    let joinWithThenAnd (punct:string) andor (ws : string[]) = 
-      match ws.Length with
-      | 1 ->  ws.[0]
-      | 0 -> ""
-      | _ -> let p1 = String.Join(punct, ws.[..ws.Length - 2]) 
-             p1 + " " + andor + " " + ws.LastElement
+    let rot places a =
+        let n = Array.length a
+        a
+        |> Array.permute (fun i ->
+               let modulo = ((i + places) % n)
+               if i + places < 0 && modulo <> 0 then n + modulo
+               else modulo)
 
-    ///compresses a 2D array in form [][] into an array of lists with all rows now ocuppying a single list per column.
-    let collapseCols (data:'a[][]) = 
-      let outcol = Array.create data.[0].Length []
-      for c in 0..data.[0].Length - 1 do
-         for r in 0..data.Length - 1 do
-            outcol.[c] <- data.[r].[c]::outcol.[c]
-      outcol
-    let getSkip start skip stop data = [|start..skip..stop|] |> Array.map (Array.get data)
-    let subOrMax take (a:'a[]) = a.[0..(min (a.Length-1) take)]
-    let filterElseTake filter sortfunc min_n n (a:'a[]) = 
-       let na = Array.filter filter a
-       if na.Length < min_n then subOrMax n (sortfunc a) else na
-    
+    let firstOrZero def (a : 'a []) =
+        if a.Length = 0 then def
+        else a.[0]
 
-    let suffix n (s:'a[]) = s.[max 0 (s.Length - n)..] 
-    let prefix n (s:'a[]) = if s.Length = 0 then s else s.[..min (s.Length - 1) n] 
-    let liftPair (x,y) = [|x;y|]
-    let mapiFilter mapf filter (vec:'a []) = 
+    let inline lift x = [| x |]
+
+    let pairNexts (a : 'a []) =
+        [| for i in 0..2..a.Length - 2 -> a.[i], a.[i + 1] |]
+
+    let inline sortByDescending f = Array.sortBy (fun x -> -1. * float (f x))
+    let inline sortByDescendingLinq f (a : 'a []) =
+        a.OrderByDescending(System.Func<_, _> f) |> Array.ofSeq
+    let inline lastElement (a : 'a []) = a.[a.Length - 1]
+    let inline nthFromLastElement i (a : 'a []) = a.[a.Length - i - 1]
+    let inline getAt loc (a : 'a []) = a.[loc]
+    let inline countElements array = array |> Array.fold Map.Incr Map.empty
+
+    let countElementsMapThenFilter f filter array =
+        array
+        |> Array.fold (fun counts item ->
+               let item' = f item
+               if filter item' then Map.Incr counts item'
+               else counts) Map.empty
+
+    let countAndMax array =
+        let counts = array |> countElements
+        counts,
+        counts
+        |> (Seq.maxBy keyValueToValue)
+        |> keyValueToPair
+
+    let takeAtPercent p (a : 'a []) =
+        let len = float a.Length in a.[..max 0 (int (round (p * len)) - 1)]
+
+    let mapFilter f cond (seqs : 'a []) =
+        [| for el in seqs do
+               let mapped = f el in if cond mapped then yield mapped |]
+
+    let subsetStartingAt start (arr : 'a []) = arr.[start..]
+    let subsetEndingAt ends (arr : 'a []) = arr.[..ends]
+    let subsetAt (start, ends) (arr : 'a []) = arr.[start..ends]
+
+    let subsetAtWithSkips (start, skip, ends) (arr : 'a []) =
+        [| for i in start..skip..ends -> arr.[i] |]
+
+    let filterMap cond f seqs =
+        [| for el in seqs do
+               if cond el then yield f el |]
+
+    let splitEvenly ways (arr : 'a []) =
+        if arr.Length % ways <> 0 then failwith "Cannot be split evenly"
+        let steps = max (arr.Length / ways) 1
+        [| for i in 0..steps..arr.Length - steps -> arr.[i..i + steps - 1] |]
+
+    let split_TakeN_atATime n (arr : 'a []) =
+        let steps = n
+        let len = arr.Length - 1
+        [| for i in 0..steps..len -> arr.[i..min (i + steps - 1) len] |]
+
+    let splitByPercent p (array : 'a []) =
+        let take = int (float (array.Length) * p)
+        array.[0..take], array.[take + 1..array.Length - 1]
+
+    let removeDuplicates s =
+        s
+        |> set
+        |> Set.toArray
+
+    let mapRight f sq = sq |> Array.map (keepLeft f)
+
+    let getColJagged col (arr : 'a [] []) =
+        [| for row in 0..arr.Length - 1 -> arr.[row].[col] |]
+
+
+    ///compresses a 2D array in form [][] into an array of lists with all rows now occupying a single list per column.
+    let collapseCols (data : 'a [] []) =
+        let outcol = Array.create data.[0].Length []
+        for c in 0..data.[0].Length - 1 do
+            for r in 0..data.Length - 1 do
+                outcol.[c] <- data.[r].[c] :: outcol.[c]
+        Array.map List.rev outcol
+
+    let subOrMax take (a : 'a []) = a.[..(min (a.Length - 1) take)]
+    let takeOrMax n a = subOrMax n a
+    let filterElseTake filter sortfunc min_n n (a : 'a []) =
+        let na = Array.filter filter a
+        if na.Length < min_n then subOrMax n (sortfunc a)
+        else na
+
+    let suffix n (s : 'a []) = s.[max 0 (s.Length - n)..]
+
+    let prefix n (s : 'a []) =
+        if s.Length = 0 then s
+        else s.[..min (s.Length - 1) n]
+
+    let liftPair (x, y) = [| x; y |]
+
+    let mapiFilter mapf filter (vec : 'a []) =
         let c = ref 0
-        [|for a in vec do 
-                let i = !c 
-                incr c
-                let b = mapf i a
-                if filter b then yield b|]
+        [| for a in vec do
+               let i = !c
+               incr c
+               let b = mapf i a
+               if filter b then yield b |]
 
-    let filteriMap filter mapf (vec:'a []) = 
+    let filteriMap filter mapf (vec : 'a []) =
         let c = ref 0
-        [|for a in vec do 
-                let i = !c
-                incr c
-                if filter i a then yield mapf a|]
+        [| for a in vec do
+               let i = !c
+               incr c
+               if filter i a then yield mapf a |]
 
-    let filteri filter (vec:'a []) = 
+    let filteri filter (vec : 'a []) =
         let c = ref 0
-        [|for a in vec do 
-                let i = !c
-                incr c
-                if filter i a then yield a|]
-   
+        [| for a in vec do
+               let i = !c
+               incr c
+               if filter i a then yield a |]
+
     let oddElements a = filteri (fun i _ -> i % 2 <> 0) a
     let evenElements a = filteri (fun i _ -> i % 2 = 0) a
-
-    let filterToColumn op c (d:'a[][]) = d |> Array.map (filteri (fun i _ -> op c i))
-
-    let filterToColumnSingle op c (d:'a[]) = d |> filteri (fun i _ -> op c i)
+    let filterToColumn op c (d : 'a [] []) =
+        d |> Array.map (filteri (fun i _ -> op c i))
+    let filterToColumnSingle op c (d : 'a []) = d |> filteri (fun i _ -> op c i)
     let deleteCol c = filterToColumnSingle (<>) c
     let deleteColumn c = filterToColumn (<>) c
-
     let selectColumn c = filterToColumn (=) c
-
     let selectColumns cs = filterToColumn (flip Set.contains) cs
-    let deleteColumns cs = filterToColumn (fun cols c -> Set.contains c cols |> not) cs
-    let takeOrMax n a =
-        let len = Array.length a - 1
-        a.[..min n len]
+    let deleteColumns cs =
+        filterToColumn (fun cols c -> Set.contains c cols |> not) cs
+
+
 //---------Array 2D----------
 type 'a ``[,]`` with
     member m.RowCount = m.GetLength(0)
@@ -900,7 +930,16 @@ module Strings =
               found && seen+1 = numtake || (if lookforward then n >= strmax else n < 0), 
               (if found || (lookforward && n = strmax || n = 0 && not lookforward) then (seen + 1,n::seens) else (seen, seens)), 
               (if lookforward then n + 1 else n - 1)) (false,(0,[]),i) |> snd3 
-    
+  
+  ///e.g. ["a";"b";"c"] -> "a,b and c"
+  let joinWithThenAnd (punct : string) andor (strings : string seq) =
+        let ws = Seq.toArray strings
+        match ws.Length with
+        | 1 -> ws.[0]
+        | 0 -> ""
+        | _ ->
+            let p1 = String.Join(punct, ws.[..ws.Length - 2])
+            p1 + " " + andor + " " + ws.LastElement
 /////////////////MUTABLE STRUCTURES AND COUNTING///////////////////////
 
 module Hashset =
@@ -941,10 +980,9 @@ module Seq =
           while enuma.MoveNext() && enumb.MoveNext() && enumc.MoveNext() && enumd.MoveNext() do
             yield (enuma.Current, enumb.Current, enumc.Current, enumd.Current) }  
 
-  let removeDuplicates s = s |> set |> Set.toArray
-  let groupByResultToArrays sq =  sq |> Seq.toArray |> Array.map (keepLeft Seq.toArray)
+  let removeDuplicates s = s |> set |> Set.toSeq 
   
-  let mapGroupByWith f sq =  sq |> Seq.toArray |> Array.map (keepLeft f)
+  let mapGroupByWith f sq =  sq |> Seq.map (keepLeft f)
 
   let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float(f x))
 
@@ -953,8 +991,7 @@ module Seq =
   let inline counts (v:seq<'a>) =  v |> Seq.fold Map.Incr Map.empty
 
   let mode (v:seq<'a>) = (counts v |> Seq.maxBy(fun x -> x.Value)).Key  
-
-  let modeSeq (v:seq<'a>) = (counts v |> Seq.sortBy (fun x -> x.Value))
+  
    
   let splitSeqWith condition f seqs = 
        let current, all = 

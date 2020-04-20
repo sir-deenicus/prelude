@@ -13,7 +13,9 @@
 #nowarn "1125"
 
 //#r @"bin\Release\net47\System.Memory.dll"
-#r @"bin\Release\net47\Prelude.dll"
+#r "bin\\Debug\\net47\\Microsoft.Experimental.Collections.dll"
+#r @"bin\Debug\net47\Prelude.dll"
+ 
 
 open Prelude.Math
 open System
@@ -65,48 +67,81 @@ g3.InsertEdge(3,8)
 g3.InsertEdge(3,10)
 g3.InsertEdge(11,9)
 g3.InsertEdge(11,10)
+ 
 
 
-let g0 = WeightedDirectedGraph<string>()
+let page = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\dagre-template.txt" 
+let disptemplate = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\disp-template.txt"
+
+let gi = CompressedDirectedGraph<int,float, _>(byte) 
+for i in 1..15 do
+    gi.InsertVertex i
+    
+for x in 2..15 do
+    for y in 2..15 do 
+        if x <> y && x % y = 0 then
+            gi.InsertEdge(x,y,1.) |> ignore
+
+gi.ComputeReverseIndex()            
+
+let g0 = CompressedDirectedGraph<string,float,_>(uint16, true)
 
 g0.InsertVertex "A"
 g0.InsertVertex "B"
 g0.InsertVertex "C"
 g0.InsertVertex "D"
 g0.InsertVertex "E"
-g0.InsertEdge("A", "B" , 2.)
-g0.InsertEdge("A", "C" , 3.)
-g0.InsertEdge("C", "D" , 1.)
-g0.InsertEdge("D", "E" , 1.)
+g0.InsertVertex "F"
+g0.InsertEdge("B", "A" , 2.)
+g0.InsertEdge("C", "B" , 3.)
+g0.InsertEdge("A", "C" , 3.) 
+//g0.InsertEdge("C", "D" , 1.)
+g0.InsertEdge("D", "C" , 1.)
+g0.InsertEdge("E", "D" , 1.)
 g0.InsertEdge("C", "E" ,5.)
+//g0.InsertEdge("E", "C" ,5.) 
+g0.ComputeReverseIndex()
 
+let gtxt = GraphVisualization.createDagreGraph string string 30 30 g0
+let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  false "n1" 600 500 gtxt)
+IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)
 
+GraphAlgorithms.GetNeighbors(gi, 9, 2)
+
+[for (i, k) in List.groupBy snd (GraphAlgorithms.GetNeighbors(gi, 12, 2)) do yield i, List.map fst k]
+
+g0
+g0.Edges
+g0.ForEachEdge ((+) 1.)
+
+g0.Ins "D"
+g0
+//let (Ok order) = 
+GraphAlgorithms.isCyclic g0
+GraphAlgorithms.topologicalSort g0
+
+for _ in 1..1_000_000 do GraphAlgorithms.isCyclic g0 |> ignore
+ 
 let (Choice1Of2 tc) = GraphAlgorithms.minimumSpanningTree g0
-
-tc
-
-let (Ok order) = GraphAlgorithms.topologicalSort g0
-
-GraphAlgorithms.shortestPath order g0 "A"
-|> snd 
-|> readOffPath "E"  
-
  
 
+let (Ok order) = GraphAlgorithms.topologicalSort g0
+ 
+
+GraphAlgorithms.shortestPath(g0,order,  "A")
+|> snd 
+|> GraphAlgorithms.readOffPath "E"   
+
 weightedGraphToTree g0 ("C", 0.)
-|> find (fst >> (=) "D")
-
-|> dispTree string
-
-|> linearizeWithShortPathsBias
+//|> find (fst >> (=) "D") 
+//|> dispTree string 
+|> flattenWithShortPathBias
 
  
 Branch("B", [Node "A"; Branch("C", [Node "D"; Branch("E", [Node "E1"])]); Node "F"])
-|> dispTree id
-|> find ((=) "E")
-
-//|> SimpleTrees.dispTree id
-|> treeToVerticesAndEdges ""
+//|> dispTree id
+//|> find ((=) "E")  
+|> toVerticesAndEdges ""
 
 (*
 let commaNumber (ToString str) = 
@@ -118,6 +153,8 @@ let commaNumber (ToString str) =
     s + num' + (joinToString decimalpart)
 
 *)
+
+open Prelude.Math.Stats
 
 let dat = [2.,6.; 3.,8. ;12.,9.;5.,2.;16.,2.] 
 
@@ -131,22 +168,13 @@ dat |> List.averageBy snd
 
 
 Array.collapseCols 
-            [|[|"A"; "B"|]
-              [|"B"; "C"|]
-              [|"A" ; "C"|]|]  |> Array.map Seq.mode 
-
-
-let x = [|"a", 1; "b", 2|]
-let y = [|"a", 1; "b", 3|]
-
-let _x = [|0, 1; 2, 2|]
-let _y = [|1, 1; 5, 3|]
-
-addInPlaceIntoFirstGen (fun (_,x) (l,y) -> l, x + y) x y  
-x = [|"a",2; "b",5|]
-addInPlaceIntoFirstGen addPairs _x _y
-_y
-_x
+    [|  [|"A"; "B"|]
+        [|"B"; "C"|]
+        [|"A" ; "C"|]|]
+    |> Array.map Seq.mode 
+ 
+ 
+Array.splitEvenly 2 [|1..9|]
 
 let thevec = [|for i in 0..15 -> random.NextDouble(1.,20.)|]
 varianceAndMean thevec   
@@ -185,54 +213,6 @@ hoursToText 24.
 DateTime.Now.AddDays(-54.).StartOfMonth()
                        
 
-waterfall {
-    let! _ = Array.tryFind ((=) 2) [|3..5|]
-    let! _ = Array.tryFind ((=) 1) [|3..5|]
-    return 7
-  }
-
-waterfall {
-    let! _ = Array.tryFind ((=) 2) [|3..5|]
-    let! _ = Array.tryFind ((=) 4) [|3..5|]
-    return 7
-  }
-
-waterfallOption {
-    let! _ = Array.tryFind ((=) 2) [|3..5|]
-    let! _ = Array.tryFind ((=) 1) [|3..5|]
-    return 0
-  }
-
-waterfallOption {
-    let! _ = Array.tryFind ((=) 2) [|3..5|]
-    let! _ = Array.tryFind ((=) 1) [|3..5|]
-    ()
-  }
-
-nestif {
-      let! _ = 2 < 10
-      let! _ = 5 < 10
-      printfn "good"
-   }
-
-nestifMaybe {
-      let! _ = 2 < 10
-      let! _ = 5 < 10
-      return true
-   }
-
-nestifMaybe {
-      let! _ = 2 < 10
-      let! _ = 15 < 10
-      return true
-   }
-
-nestif {
-      let! _ = 2 < 10
-      let! _ = 11 < 10
-      printfn "good"
-   }
-
 errorFall {
    let! e, b = lazy(IO.File.ReadAllBytes <| combinePaths [__SOURCE_DIRECTORY__; "prelude"; "prelude.fs"])
    let! e2, b2 = lazy(IO.File.ReadAllBytes "none") 
@@ -252,10 +232,10 @@ errorFall {
 
 
    
-String.findIndexi true (currysnd ((=) 'f')) 4 "fright"
-String.findIndexi false (currysnd ((=) 'f')) 4 "fright"
-String.findIndexi false (currysnd ((=) 'i')) 4 "fright"
-String.findIndexi true (currysnd ((=) 'i')) 4 "fright"
+Strings.findIndexi true (fun _ c -> c = 'f') 4 "fright"
+Strings.findIndexi false (fun _ c -> c = 'f') 4 "fright"
+Strings.findIndexi false (fun _ c -> c = 'i') 4 "fright"
+Strings.findIndexi true (fun _ c -> c = 'i') 4 "fright"
 
 ////////////
 
@@ -273,28 +253,13 @@ longestCommonSubSeq "airtight" "failure" |> snd |> backtrackLCS_str
 
 minHashStrDist 2 "kangaroo" "[angaroo" 
 
-let cstr = splitNatATime id string (+) 2 (charArr "cattarang")
+let cstr = splitNatATime id string (+) 2 (Strings.char_array "cattarang")
 cstr |> Set.map jenkinsOAThash = splitNatATimeStr 2 "cattarang"
 
 strTominHash (splitNatATimeStr 2) "fold"
 
 minHashStrDist 2 "bold" "oldesky"
 ////
-let fg = FastStringGraph()
- 
-fg.InsertVertex "a"
-fg.ContainsVertex "b"
-fg.InsertVertex "b"
-fg.ContainsVertex "b"
-fg.ContainsEdge "a" "b"
-fg.InsertEdge ("a", "b")
-fg.ContainsEdge "b" "a"
-fg.InsertEdge ("a", "c")
-fg.InsertVertex "c"
-fg.GetEdges "a"
-fg.GetEdges "b"
-fg.GetEdges "c"
-fg.GetEdges "d"
 
 let wg = WeightedGraph<string>()
 
@@ -304,7 +269,7 @@ wg.InsertVertex("c")
 wg.InsertEdge("a","b", 2.)
 wg.InsertEdge("c","b", 2.)
 
-wg.AdjustWeight ((+) 1.) "a" "b"
+wg.AdjustWeight ((+) 1.) ("a", "b") 
 
 wg
 ////
@@ -313,15 +278,15 @@ wg
 ///////////
 
 Array.filteriMap (fun i x -> i + 3 < x && x % 2 = 0) squared [|0..2..9|]
-[|0..2..9|] |> Array.mapi pair |> Array.filter (fun (i,x) -> i + 3 < x && x % 2 = 0) |> Array.map (snd >> squared)
+[|0..2..9|] |> Array.mapi Tuple.pair |> Array.filter (fun (i,x) -> i + 3 < x && x % 2 = 0) |> Array.map (snd >> squared)
 
 //Array.mapFilteri squared (fun i x -> i + 3 < x  && x % 2 = 0)  [|0..2..9|]
 
 
-let z = Array.mapi pair   [|0..2..9|]
+let z = Array.mapi Tuple.pair  [|0..2..9|]
 ///////////
   
-"A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> tolower |> String.capitilizebySpace 2
+"A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> tolower |> Strings.capitilizebySpace 2
 
 /////
 let teststr0 = "ab"
@@ -329,15 +294,15 @@ let teststr1 = "abcdef"
 
 let padtst n f s1 s2 = "\n" + (f n s1) + " efd" + "\n" + (f n s2) + " efd"
 
-padtst 2 String.padcut teststr0 teststr1
+padtst 2 Strings.padcut teststr0 teststr1
 teststr1.Length 
 
 let tststr = "This is \"number\" five's test"
 
 tststr.Replace("'", "[apos]").Replace("\"", "[qu]").Replace (newLine, "")
-String.replaceMultiple [|"'", "[apos]"; "\"", "[qu]"; newLine,""|] tststr
+Strings.replaceMultiple [|"'", "[apos]"; "\"", "[qu]"; newLine,""|] tststr
 
-String.transformMultiple Text.RegularExpressions.Regex.Escape [|"(cat)"; "dog"|] "The animal (cat) slapped the dog"
+Strings.transformMultiple Text.RegularExpressions.Regex.Escape [|"(cat)"; "dog"|] "The animal (cat) slapped the dog"
 
 /////
 //= [|2; 3; 7|]
@@ -354,7 +319,7 @@ autocomplete 2 t "ca"
 
 [1..10] |> Seq.takeOrMax 40 |> Seq.toArray
 
-[1..100] |> filterMapTrunc 3 ((flip (%) 2) >> ((=) 0)) ((*) 2)
+[1..100] |> filterMapTruncate 3 ((flip (%) 2) >> ((=) 0)) ((*) 2)
   
 /////Map Merging
 
@@ -377,7 +342,7 @@ m3 = Map.ofList [1,7; 2,5; 3,7; 9,91]
 let m5 = Map.merge (-) id m1 m2
 let m6 = Map.merge (-) id m2 m1 
 m5 = m6 //false not commutative 
-m5 |> Map.map (currysnd abs) = (m6 |> Map.map (currysnd abs))
+m5 |> Map.map (fun _ x -> abs x) = (m6 |> Map.map (fun _ x -> abs x))
  
 //Folds right?
 let m  = Dict.ofSeq [(4,1); (1,3); (2,1)] 

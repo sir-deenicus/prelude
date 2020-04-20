@@ -111,7 +111,7 @@ let logisticClassify w x =
 let knn distfunc n point data =  
     let nears = data |> Array.map (fun v2 -> v2, distfunc point v2) 
                      |> Array.sortBy snd  
-    nears  |> Array.sub2 0 n 
+    nears |> Array.subsetAt (0, n)
 
 ////////
 

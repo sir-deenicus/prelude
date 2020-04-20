@@ -445,48 +445,47 @@ module Array =
             for j in 0..int den - 1 do
                 outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
         outArr
-
-type Array with
-    static member inline shuffle (arr : 'a []) =
+    let inline shuffle (arr : 'a []) =
         (arr |> Array.sortBy (fun _ -> random.Next()))
 
-    static member inline Op operator a b = Array.map2 operator a b //NOTE: in defaultof<>,no performance penalty
+    let inline Op operator a b = Array.map2 operator a b //NOTE: in defaultof<>,no performance penalty
 
-    static member inline dotproduct (v1:_[]) (v2:_[]) =
+    let inline dotproduct (v1:_[]) (v2:_[]) =
         let mutable sum = Unchecked.defaultof<'a> 
         for i in 0..v1.Length - 1 do
             sum <- v1.[i] * v2.[i] + sum     
         sum
-    static member inline magnitude v = Array.dotproduct v v |> sqrt
+    let inline magnitude v = dotproduct v v |> sqrt
     
-    static member inline to_unitvector v =
-        let mag = Array.magnitude v
+    let inline to_unitvector v =
+        let mag = magnitude v
         if mag = Unchecked.defaultof<'a> then v
         else v |> Array.map (flip (/) mag)
     
-    static member inline normalize (data : ^a []) =
+    let inline normalize (data : ^a []) =
         let total = data |> Array.sum
         data |> Array.map (flip (/) total)
     
-    static member sampleOne (a : 'a []) = a.[random.Next(a.Length)]
+    let sampleOne (a : 'a []) = a.[random.Next(a.Length)]
     
-    static member inline normalizeBy f (data : ^a []) =
+    let inline normalizeBy f (data : ^a []) =
         let total = data |> Array.sumBy f
         data |> Array.map (f >> flip (/) total)
     
-    static member inline cosineSimilarityMag tol v1 v2 mag1 mag2 =
-        Array.dotproduct v1 v2 / ((mag1 * mag2) + tol)
+    let inline cosineSimilarityMag tol v1 v2 mag1 mag2 =
+        dotproduct v1 v2 / ((mag1 * mag2) + tol)
     
-    static member transposeJagged (a : 'a [] []) =
+    let transposeJagged (a : 'a [] []) =
         [| for c in 0..a.[0].Length - 1 -> 
                [| for r in 0..a.Length - 1 -> a.[r].[c] |] |]
     
-    static member inline cosineSimilarity tol v1 v2 =
-        Array.dotproduct v1 v2 
-        / ((Array.magnitude v1 * Array.magnitude v2) + tol)
+    let inline cosineSimilarity tol v1 v2 =
+        dotproduct v1 v2 
+        / ((magnitude v1 * magnitude v2) + tol)
 
-    static member inline colAverageFloats (rows : 'a [] []) =
-        Array.colAverageGen (float rows.Length) float rows
+    let inline colAverageFloats (rows : 'a [] []) =
+        colAverageGen (float rows.Length) float rows
+
 
 ///O(n) in place  
 type ``[]``<'a> with

@@ -197,7 +197,7 @@ let graphToTreeWith prjfst getEdges (node : _) =
 
 let weightedGraphToTree (fg : IWeightedGraph<_, _>) node0 = graphToTreeWith fst fg.GetWeightedEdges node0
 
-let graphToTree (fg : IGraph<_>) node0 = graphToTreeWith id fg.GetEdges node0
+let graphToTree (fg : IGraph<_>) node0 = graphToTreeWith id fg.GetNeighbors node0
  
 let rec toVerticesAndEdges parentNode =
     function

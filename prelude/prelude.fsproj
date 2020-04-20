@@ -10,6 +10,14 @@
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net47|AnyCPU'">
+    <DocumentationFile>Prelude.XML</DocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net47|AnyCPU'">
+    <DocumentationFile>Prelude.XML</DocumentationFile>
+  </PropertyGroup>
   <ItemGroup>
     <None Include="pairheap.fsx" />
     <Content Include="obsolete.txt" />
