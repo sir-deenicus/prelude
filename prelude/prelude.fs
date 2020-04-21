@@ -402,6 +402,7 @@ module List =
     let inline normalizeWeights (l: ('a * 'b) list) = 
         let tot = List.sumBy snd l
         List.map (keepLeft (flip (/) tot)) l
+    let mapRight f sq = sq |> List.map (keepLeft f)
     let filterMap filter map xs =
         [ for x in xs do
                 if filter x then yield map x ]
@@ -741,7 +742,7 @@ module Strings =
 
     let (|StrContainsAllRemove|_|) (testStrings : string []) str =
         let pass = testStrings |> Array.forall (containedinStr str)
-        if pass then Some(testStrings |> Array.fold (replace2 "") str)
+        if pass then Some(testStrings |> Array.fold (replaceAlt "") str)
         else None
 
     let (|StrContainsAll|_|) (testStrings : string []) str =
@@ -1010,6 +1011,13 @@ type String with
 
 module Hashset =
   let ofSeq (s:'a seq) = Hashset(s)
+
+type System.Collections.Generic.HashSet<'a> with
+    member h.AddRange items =
+        for item in items do h.Add item |> ignore
+
+    member h.RemoveRange items =
+        for item in items do h.Remove item |> ignore
 
 type System.Collections.Generic.List<'a> with
    static member Length (glist : Collections.Generic.List<'a>) = glist.Count

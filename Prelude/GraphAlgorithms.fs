@@ -4,12 +4,15 @@ open SimpleGraphs
 open Common
 open System
 open SimpleDirectedGraphs
+open Math
 
+  
+type DAGError<'a> = NotaDAG | IsCyclic of 'a 
 
-type IsCyclic = IsCyclic
+type NotCyclic = NotCyclic
 
 type SortDirection = Ascending | Descending 
-
+  
 module WeightedGraph =
     let mapWeights f (g: IWeightedGraph<_, _>) =
         let d = Dict<_,_>()
@@ -50,7 +53,7 @@ type GraphAlgorithms() =
         let visited = Hashset()
         let mutable errorstate = None
 
-        let rec loop n =
+        let rec hasCycles n =
             if tempmarks.Contains n then
                 errorstate <- Some n
                 true
@@ -61,13 +64,56 @@ type GraphAlgorithms() =
                     tempmarks.Add n |> ignore 
                     let res = 
                         g.GetNeighbors n
-                        |> Option.map (Array.exists loop)
+                        |> Option.map (Array.exists hasCycles)
                         |> Option.defaultValue false
                     tempmarks.Remove n |> ignore 
                     res
         if g.IsDirected then
-            Ok (Array.exists loop (Seq.toArray g.Vertices), errorstate)
-        else Error "Not a DAG"
+            if Array.exists hasCycles (Seq.toArray g.Vertices) then
+                Error (IsCyclic errorstate.Value)
+            else Ok NotCyclic
+        else Error NotaDAG
+
+    static member removeCycles reAddEdges (g:IWeightedGraph<_,_>) =
+        let cycled = System.Collections.Generic.Stack()
+        let removeds = Hashset() 
+        let rec reAdd l =
+            match l with 
+            | [] -> ()
+            | (u,v,w)::es -> 
+                g.InsertWeightedEdge(u,v,w)
+                match GraphAlgorithms.isCyclic g with 
+                | Ok NotCyclic -> reAdd es 
+                | _ -> g.RemoveEdge(u,v); reAdd es 
+        let rec innerLoop options focusnode =
+            match options with 
+            | (n0,_)::ns -> 
+                if reAddEdges then 
+                    let w = g.GetEdgeValue (n0, focusnode) |> Option.get
+                    removeds.Add(n0,focusnode,w) |> ignore
+                g.RemoveEdge(n0, focusnode) 
+                match GraphAlgorithms.isCyclic g with 
+                | Ok NotCyclic as ok -> ok
+                | Error (IsCyclic n) as err when n <> focusnode -> err
+                | Error (IsCyclic _) -> innerLoop ns focusnode
+                | _ -> failwith "Unexpected error trying to remove cycles"
+            | [] -> Error NotaDAG
+        let rec removeCycle n =
+            cycled.Push n
+            let options = 
+                [for v in g.Ins n -> v, g.GetNodeNeighborCount v |> Option.defaultValue 0] 
+                |> List.sortByDescending snd 
+            match innerLoop options n with 
+            | Ok NotCyclic -> 
+                if reAddEdges then reAdd (List.ofSeq removeds |> List.shuffle) 
+                Ok(Seq.toArray cycled)
+            | Error (IsCyclic n) -> removeCycle n
+            | Error NotaDAG -> Error "Retry with node removal"   
+    
+        match (GraphAlgorithms.isCyclic g) with 
+        | Error (IsCyclic n) -> removeCycle n
+        | Ok NotCyclic -> Ok(Seq.toArray cycled)
+        | Error NotaDAG -> Error "Not a DAG" 
 
     static member private topologicalSortRaw isdirected vertices f getEdges = 
         let tempmarks = Hashset()  
@@ -92,7 +138,7 @@ type GraphAlgorithms() =
                     completed.Add n |> ignore 
                     stack.Push n   
                 
-        if not isdirected then failwith "Not a Directed Graph"
+        if not isdirected then Error NotaDAG
         else
             let vs = Seq.toArray vertices
             let len = vs.Length
@@ -101,7 +147,7 @@ type GraphAlgorithms() =
                 let v = vs.[i]
                 i <- i + 1
                 if not(completed.Contains v || error) then visit v 
-            if error then Error (IsCyclic, errorSource) else Result.Ok (Seq.toArray stack)
+            if error then Error (IsCyclic errorSource.Value) else Result.Ok (Seq.toArray stack)
 
     static member private transformVertices prioritizeVertices (g:IGraph<_>) =
         match prioritizeVertices with

@@ -104,8 +104,8 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
             }
         else None
 
-    member g.RemoveEdge(v1,v2, ?clearEmptys) =
-        let docleanup = defaultArg clearEmptys true
+    member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
+        let docleanup = defaultArg clearIsolatedNodes true
         maybe {
             let! connectedToNode1 = edges.tryFind v1
             let r = connectedToNode1.Remove(v2)
@@ -270,20 +270,26 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
     interface IWeightedGraph<'a,float> with
         member g.Vertices = seq g.Vertices
         member g.Edges = Array.map fst g.Edges
-        member g.WeightedEdges = g.Edges
+        member g.WeightedEdges = g.Edges 
+        member g.Ins v = g.Ins v
         member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
         member g.GetWeightedEdges n = g.GetEdges n
-        member g.IsDirected = true
         member g.AddNode v = g.InsertVertex v |> ignore
         member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
+        member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.RawEdgeData() = Dict.ofSeq [|for KeyValue(k,v) in g.EdgeData -> k, Hashset(v.Keys)|]  
         member g.RawEdgeWeightData() = g.EdgeData 
-        member g.GetRawEdges v = g.GetEdgesRaw v  
-        member g.HasCycles = cyclic
+        member g.GetRawEdges v = g.GetEdgesRaw v   
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
+        member g.ApplyToEdges f = g.ForEachEdge f 
+        member g.IsDirected = true 
         member g.IsWeightNormalized = weightnormalized
-        member g.ApplyToEdges f = g.ForEachEdge f
+        member g.HasCycles = cyclic 
+        member g.InsertEdge(_,_)= failwith "Need weight"
+        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
+        member g.RemoveEdge(u,v,clearIsolatedNodes) = 
+            g.RemoveEdge(u,v, clearIsolatedNodes) |> ignore
 
 
 
@@ -297,7 +303,7 @@ open CollectionSlim
 ///if MaintainInEdges = true, a look up table for inedges is built, using a bit more memory for O(1) look up. Without, inedges lookup is O(n).
 type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : comparison and 'a :> IEquatable<'a> and 'keytype : equality and 'keytype :> IEquatable<'keytype>>(keytype, ?MaintainInEdges) =
     let mutable edges = DictionarySlim<'keytype, DictionarySlim<'keytype, 'b>>()
-    let mutable inedges = DictionarySlim<'keytype, SetSlim<'keytype>>()
+    let mutable inedges = DictionarySlim<'keytype, Hashset<'keytype>>()
 
     let vertices = DictionarySlim<'a, 'keytype>()
     let rev_vertices = DictionarySlim<'keytype, 'a>()
@@ -323,11 +329,11 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
             node1, 
             [| for (node2, w) in keyValueSeqtoPairArray nodes -> node2 , f w|]|],
           keyValueSeqtoPairArray vertices), 
-        [|for (node1, nodes) in keyValueSeqtoPairArray inedges -> node1, nodes.ToArray id|]
+        [|for (node1, nodes) in keyValueSeqtoPairArray inedges -> node1, nodes|]
 
     member g.RebuildInEdges () =
         let getInEdges v =
-            let vset = SetSlim()
+            let vset = Hashset()
             for KeyValue(a, vs) in edges do
                 if vs.ContainsKey v then vset.Add a |> ignore
             vset
@@ -363,7 +369,7 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
         | true -> g.RebuildInEdges()
         | false ->
             for (i,vs) in inEdges do
-                let inset = SetSlim<'keytype>()
+                let inset = Hashset<'keytype>()
                 for k in vs do 
                     inset.Add k |> ignore 
                 let ins = &inedges.GetOrAddValueRef i
@@ -392,7 +398,7 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
 
             if maintainInEdges then
                 let ins = &inedges.GetOrAddValueRef count
-                ins <- SetSlim()
+                ins <- Hashset()
         contained 
 
     member g.Remove(v : 'a) =
@@ -400,9 +406,9 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
         if has then 
             if maintainInEdges then
                 let _, ins = inedges.TryGetValue i
-                ins.iter (fun k -> 
+                for k in ins do
                     let _, es = edges.TryGetValue k
-                    es.Remove i |> ignore) 
+                    es.Remove i |> ignore
             else
                 for (KeyValue(_, es)) in edges do
                     if es.ContainsKey i then  
@@ -422,6 +428,26 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
                 if maintainInEdges then
                     let _, ins = inedges.TryGetValue i2
                     ins.Add i |> ignore
+                true
+            else false
+        else false
+         
+    member g.RemoveEdge(v0, v1, ?clearIsolatedNodes) =
+        let has1, i = vertices.TryGetValue v0
+        if has1 then
+            let has2, i2 = vertices.TryGetValue v1
+            if has2 then
+                let has3, es = edges.TryGetValue i
+                if has3 then
+                    if es.ContainsKey i2 then
+                        es.Remove i2 |> ignore  
+                if maintainInEdges then
+                    let _, ins = inedges.TryGetValue i2
+                    ins.Remove i |> ignore  
+                let docleanup = defaultArg clearIsolatedNodes true
+                let _ =
+                    if docleanup && es.Count = 0
+                        && Array.isEmpty (g.Ins v1) then edges.Remove i |> ignore 
                 true
             else false
         else false
@@ -465,7 +491,7 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
             let _, es = edges.TryGetValue i
             Some
                 [| for (KeyValue(k, w)) in es ->
-                       rev_vertices.TryGetValue k |> snd, w |]
+                    rev_vertices.TryGetValue k |> snd, w |]
         else None
 
     member g.GetEdgesRaw v = Option.map Dict.ofSeq (g.GetEdges v)
@@ -475,13 +501,12 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
         if hasv then
             if maintainInEdges then
                 let _, es = inedges.TryGetValue i
-                Some (es.ToArray (rev_vertices.TryGetValue >> snd))                 
+                [|for n in es -> snd(rev_vertices.TryGetValue n)|]
             else 
                 [| for (KeyValue(a, es)) in edges do
-                       if es.ContainsKey i then
-                           yield (snd (rev_vertices.TryGetValue a)) |]
-                |> Some
-        else None
+                    if es.ContainsKey i then
+                        yield (snd (rev_vertices.TryGetValue a)) |] 
+        else Array.empty
 
     member g.Edges =
         [|for KeyValue(node1,nodes) in g.EdgeData do
@@ -511,21 +536,28 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
     member g.Vertices =
         [| for kv in vertices -> kv.Key |]
 
-    interface IWeightedGraph<'a,'b> with
+    interface IWeightedGraph<'a,'b> with 
+        member g.IsDirected = true 
+        member g.HasCycles = cyclic
         member g.Vertices = seq g.Vertices
         member g.Edges = Array.map fst g.Edges
         member g.WeightedEdges = g.Edges
         member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
         member g.GetWeightedEdges n = g.GetEdges n
-        member g.IsDirected = true
         member g.AddNode v = g.InsertVertex v |> ignore
         member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
-        member g.HasCycles = cyclic
+        member g.Ins v = g.Ins v
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.IsWeightNormalized = weightnormalized
         member g.GetRawEdges v = g.GetEdgesRaw v
-        member g.ApplyToEdges f = g.ForEachEdge f
+        member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
+        member g.ApplyToEdges f = g.ForEachEdge f 
+        member g.InsertEdge(_,_)= failwith "Need weight"
+        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
+        member g.RemoveEdge(u,v,clearIsolatedNodes) = 
+            g.RemoveEdge(u,v,clearIsolatedNodes) |> ignore
+
         member g.RawEdgeData() =
             Dict.ofSeq
                 [| for KeyValue(k, v) in g.EdgeData ->
@@ -574,8 +606,8 @@ type GeneralDirectedGraph<'a, 'b when 'a : equality and 'a : comparison>() =
             for (v2, w) in keyValueSeqtoPairArray vs do
                 if not (f ((v,v2),w)) then g.RemoveEdge(v,v2) |> ignore
 
-    member g.RemoveEdge(v1,v2, ?clearEmptys) =
-        let docleanup = defaultArg clearEmptys true
+    member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
+        let docleanup = defaultArg clearIsolatedNodes true
         maybe {
             let! connectedToNode1 = edges.tryFind v1
             let r = connectedToNode1.Remove(v2)
@@ -658,10 +690,13 @@ type GeneralDirectedGraph<'a, 'b when 'a : equality and 'a : comparison>() =
         member g.GetWeightedEdges n = g.GetEdges n
         member g.IsDirected = true
         member g.AddNode v = g.InsertVertex v |> ignore
+        member g.Ins v = g.Ins v
         member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.GetRawEdges v = g.GetEdgesRaw v 
-        member g.ApplyToEdges f = g.ForEachEdge f
+        member g.ApplyToEdges f = g.ForEachEdge f 
+        member g.InsertEdge(_,_)= failwith "Need weight"
+        member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.RawEdgeData() =
             Dict.ofSeq
                 [| for KeyValue(k, v) in g.EdgeData -> k, Hashset(v.Keys) |]
@@ -670,6 +705,8 @@ type GeneralDirectedGraph<'a, 'b when 'a : equality and 'a : comparison>() =
         member g.HasCycles = cyclic
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.IsWeightNormalized = weightnormalized
+        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
+        member g.RemoveEdge(u,v,clearIsolatedNodes) = g.RemoveEdge(u,v,clearIsolatedNodes) |> ignore
 
 type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
     let mutable edges = Dict<'a,Hashset<'a>>() 
@@ -710,7 +747,7 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
     member g.InsertVertex(s : 'a) =
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s, Hashset())
-        contained
+        contained 
 
     member g.InEdges v = 
         [|for KeyValue(a, vs) in edges do
@@ -739,8 +776,8 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
                 return true
         } 
 
-    member g.RemoveEdge(v1,v2, ?clearEmptys) =
-        let docleanup = defaultArg clearEmptys true
+    member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
+        let docleanup = defaultArg clearIsolatedNodes true
         maybe {
             let! connectedToNode1 = edges.tryFind v1
             let r = connectedToNode1.Remove(v2)
@@ -775,13 +812,28 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
     member g.NodeNeighborCount v = 
         Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.tryFind v) 
 
+    
+    static member ofChain l =   
+        let dg = DirectedGraph()
+        for v in l do dg.InsertVertex v |> ignore
+
+        List.pairwise l 
+        |> List.iter (dg.InsertEdge >> ignore)
+
+        dg
+
     interface IGraph<'a> with
         member g.Vertices = seq g.Vertices
         member g.Edges = g.Edges 
         member g.GetNeighbors n = g.GetEdges n  
         member g.IsDirected = true
+        member g.Ins v = g.Ins v
         member g.AddNode v = g.InsertVertex v |> ignore 
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.RawEdgeData() = g.EdgeData  
         member g.HasCycles = cyclic
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v 
+        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
+        member g.InsertEdge(u,v) = g.InsertEdge(u,v) |> ignore
+        member g.RemoveEdge(u,v,clearIsolatedNodes) = 
+            g.RemoveEdge(u,v, clearIsolatedNodes) |> ignore

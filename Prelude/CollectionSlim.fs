@@ -205,7 +205,7 @@ type SetSlim<'k when 'k : equality and 'k :> IEquatable<'k>> =
         entries.[i].next <- entries.[bucketIndex].bucket-1
         entries.[bucketIndex].bucket <- i+1
         m.count <- i+1
-        i
+        i 
 
     member m.Add(key:'k) =
         let entries = m.entries
@@ -214,7 +214,12 @@ type SetSlim<'k when 'k : equality and 'k :> IEquatable<'k>> =
         while i >= 0 && not(key.Equals(entries.[i].key)) do
             i <- entries.[i].next
         if i >= 0 then i
-        else m.AddKey(key, hashCode)
+        else m.AddKey(key, hashCode) 
+
+    member m.Contains key = 
+        match m.Get key with
+        | ValueSome _ -> true
+        | _ -> false
 
     member m.Get(key:'k) =
         let entries = m.entries
@@ -236,4 +241,4 @@ type SetSlim<'k when 'k : equality and 'k :> IEquatable<'k>> =
         Array.init m.count (fun i -> f m.entries.[i].key)
 
     member m.ToList(f) =
-        List.init m.count (fun i -> m.entries.[i].key)
+        List.init m.count (fun i -> f m.entries.[i].key)

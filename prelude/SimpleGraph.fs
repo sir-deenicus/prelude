@@ -4,26 +4,31 @@ open Prelude.Common
 open System
 open Prelude.Collections.FibonacciHeap
 
-type IGraph<'Node> =
+type IGraph<'Node> = 
+    abstract IsDirected : bool   
+    abstract HasCycles : bool option 
     abstract Vertices : seq<'Node> 
     abstract Edges : ('Node * 'Node) [] 
-    abstract IsDirected : bool  
     abstract RawEdgeData : unit -> Dict<'Node, Hashset<'Node>>
     abstract AddNode : 'Node -> unit
     abstract GetNeighbors : 'Node -> 'Node [] option
     abstract GetNodeNeighborCounts : unit -> ('Node * int) [] 
     abstract GetNodeNeighborCount : 'Node -> int option
-    abstract HasCycles : bool option 
-     
+    abstract Ins : 'Node -> 'Node []  
+    abstract RemoveEdge : 'Node * 'Node * bool -> unit
+    abstract RemoveEdge : 'Node * 'Node -> unit
+    abstract InsertEdge : 'Node * 'Node -> unit
+
 type IWeightedGraph<'Node, 'Weight> =
     inherit IGraph<'Node> 
     abstract WeightedEdges : (('Node * 'Node) * 'Weight) [] 
     abstract RawEdgeWeightData : unit -> Dict<'Node, Dict<'Node, 'Weight>>
     abstract GetWeightedEdges : 'Node -> ('Node * 'Weight) [] option 
+    abstract GetEdgeValue : 'Node * 'Node -> 'Weight option 
     abstract InsertWeightedEdge : ('Node*'Node*'Weight) -> unit
     abstract GetRawEdges : 'Node -> Dict<'Node,'Weight> option
-    abstract IsWeightNormalized : bool
     abstract ApplyToEdges : ('Weight -> 'Weight) -> unit
+    abstract IsWeightNormalized : bool
 
 type UndirectedGraph<'a when 'a: equality and 'a: comparison>() = 
     let edges = Dict<'a,'a Hashset>()
@@ -91,11 +96,15 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
         member g.Edges = g.Edges  
         member g.GetNeighbors n = g.GetEdges n
         member g.IsDirected = false  
+        member g.Ins _ = failwith "No a directed graph"
         member g.RawEdgeData() = g.EdgeData 
         member g.HasCycles = None
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.AddNode v = g.InsertVertex v |> ignore 
+        member g.InsertEdge(u,v) = g.InsertEdge(u,v) |> ignore
+        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v) |> ignore
+        member g.RemoveEdge(u,v, clean) = failwith "No a directed graph"
 //===================================================//
 
 [<Struct;CustomComparison;CustomEquality>]
@@ -398,6 +407,11 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         member g.GetRawEdges v = g.GetEdgesRaw v  
         member g.IsWeightNormalized = weightnormalized
         member g.HasCycles = None
+        member g.Ins _ = failwith "No a directed graph"
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.ApplyToEdges f = g.ForEachEdge f
+        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v) |> ignore
+        member g.RemoveEdge(u,v,clean) = failwith "No a directed graph"
+        member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
+        member g.InsertEdge(_,_)= failwith "Need weight"
 

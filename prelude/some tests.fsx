@@ -30,6 +30,7 @@ open Prelude.SimpleTrees
 open Prelude.Common.Strings
 open Prelude.SimpleDirectedGraphs
 open Prelude
+open Prelude
 
 let g1 = DirectedGraph<int>()
 
@@ -66,12 +67,8 @@ g3.InsertEdge(8,9)
 g3.InsertEdge(3,8)
 g3.InsertEdge(3,10)
 g3.InsertEdge(11,9)
-g3.InsertEdge(11,10)
- 
+g3.InsertEdge(11,10) 
 
-
-let page = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\dagre-template.txt" 
-let disptemplate = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\disp-template.txt"
 
 let gi = CompressedDirectedGraph<int,float, _>(byte) 
 for i in 1..15 do
@@ -84,6 +81,58 @@ for x in 2..15 do
 
 gi.ComputeReverseIndex()            
 
+
+let page = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\dagre-template.txt" 
+let disptemplate = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\disp-template.txt"
+
+   
+let disp(g0:IWeightedGraph<string,float>) =
+    let gtxt = GraphVisualization.createDagreGraph string string 30 30 g0
+    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  false "n1" 600 500 gtxt)
+    IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)
+    
+let removeCycles reAddEdges (g:IWeightedGraph<_,_>) =
+    let cycled = System.Collections.Generic.Stack()
+    let removeds = Hashset() 
+    let rec reAdd l =
+        match l with 
+        | [] -> ()
+        | (u,v,w)::es -> 
+            g.InsertWeightedEdge(u,v,w)
+            match GraphAlgorithms.isCyclic g with 
+            | Ok NotCyclic -> reAdd es 
+            | _ -> g.RemoveEdge(u,v); reAdd es 
+    let rec innerLoop options focusnode =
+        match options with 
+        | (n0,_)::ns -> 
+            if reAddEdges then 
+                let w = g.GetEdgeValue (n0, focusnode) |> Option.get
+                removeds.Add(n0,focusnode,w) |> ignore
+            g.RemoveEdge(n0, focusnode) 
+            match GraphAlgorithms.isCyclic g with 
+            | Ok NotCyclic as ok -> ok
+            | Error (IsCyclic n) as err when n <> focusnode -> err
+            | Error (IsCyclic _) -> innerLoop ns focusnode
+            | _ -> failwith "Unexpected error trying to remove cycles"
+        | [] -> Error NotaDAG
+    let rec removeCycle n =
+        cycled.Push n
+        let options = 
+            [for v in g.Ins n -> v, g.GetNodeNeighborCount v |> Option.defaultValue 0] 
+            |> List.sortByDescending snd 
+        match innerLoop options n with 
+        | Ok NotCyclic -> 
+            if reAddEdges then reAdd (List.ofSeq removeds |> List.shuffle) 
+            Ok(Seq.toArray cycled)
+        | Error (IsCyclic n) -> removeCycle n
+        | Error NotaDAG -> Error "Retry with node removal"   
+    
+    match (GraphAlgorithms.isCyclic g) with 
+    | Error (IsCyclic n) -> removeCycle n
+    | Ok NotCyclic -> Ok(Seq.toArray cycled)
+    | Error NotaDAG -> Error "Not a DAG" 
+  
+
 let g0 = CompressedDirectedGraph<string,float,_>(uint16, true)
 
 g0.InsertVertex "A"
@@ -92,46 +141,69 @@ g0.InsertVertex "C"
 g0.InsertVertex "D"
 g0.InsertVertex "E"
 g0.InsertVertex "F"
+g0.InsertVertex "G"
 g0.InsertEdge("B", "A" , 2.)
 g0.InsertEdge("C", "B" , 3.)
 g0.InsertEdge("A", "C" , 3.) 
-//g0.InsertEdge("C", "D" , 1.)
+g0.InsertEdge("D", "B" , 1.)
 g0.InsertEdge("D", "C" , 1.)
 g0.InsertEdge("E", "D" , 1.)
-g0.InsertEdge("C", "E" ,5.)
-//g0.InsertEdge("E", "C" ,5.) 
-g0.ComputeReverseIndex()
+g0.InsertEdge("C", "E" ,5.3)
+g0.InsertEdge("F", "D" ,4.) 
+g0.InsertEdge("E", "F" ,2.) 
+g0.InsertEdge("A", "F" ,6.) 
+g0.InsertEdge("F", "G" ,5.2)
+g0.InsertEdge("E", "G" ,5.2)
+g0.InsertEdge("D", "G" ,5.2)
+g0.InsertEdge("G", "D" ,5.2)
+g0.InsertEdge("F", "F" ,5.21)
+g0.InsertEdge("G", "C" ,5.2)
+g0.ComputeReverseIndex()  
+disp g0
 
-let gtxt = GraphVisualization.createDagreGraph string string 30 30 g0
-let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  false "n1" 600 500 gtxt)
-IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)
-
-GraphAlgorithms.GetNeighbors(gi, 9, 2)
-
-[for (i, k) in List.groupBy snd (GraphAlgorithms.GetNeighbors(gi, 12, 2)) do yield i, List.map fst k]
-
+removeCycles true g0
+disp g0
+GraphAlgorithms.GetNeighbors(g0, "F", 4)
+|> List.groupBy snd
+|> List.mapRight (List.map fst)
+    
 g0
 g0.Edges
 g0.ForEachEdge ((+) 1.)
 
-g0.Ins "D"
+g0.Ins "A"
+g0.Ins "C"
 g0
+
 //let (Ok order) = 
 GraphAlgorithms.isCyclic g0
 GraphAlgorithms.topologicalSort g0
 
 for _ in 1..1_000_000 do GraphAlgorithms.isCyclic g0 |> ignore
  
-let (Choice1Of2 tc) = GraphAlgorithms.minimumSpanningTree g0
- 
+let (Choice1Of2 tc) = GraphAlgorithms.minimumSpanningTree g0 
 
-let (Ok order) = GraphAlgorithms.topologicalSort g0
- 
+let (Ok order) = GraphAlgorithms.topologicalSort g0 
 
 GraphAlgorithms.shortestPath(g0,order,  "A")
 |> snd 
 |> GraphAlgorithms.readOffPath "E"   
 
+
+let t = weightedGraphToTree g0 ("C", 0.)
+
+let tvs, tes = toVerticesAndEdges ("",0.) t
+
+let d = WeightedDirectedGraph<string>()
+
+for (v,_) in tvs do d.InsertVertex v
+
+for (n1,_), (n2,w) in tes do d.InsertEdge(n1,n2,w)
+
+disp d
+
+GraphAlgorithms.isCyclic d
+removeCycles true d
 weightedGraphToTree g0 ("C", 0.)
 //|> find (fst >> (=) "D") 
 //|> dispTree string 
@@ -232,10 +304,8 @@ errorFall {
 
 
    
-Strings.findIndexi true (fun _ c -> c = 'f') 4 "fright"
-Strings.findIndexi false (fun _ c -> c = 'f') 4 "fright"
-Strings.findIndexi false (fun _ c -> c = 'i') 4 "fright"
-Strings.findIndexi true (fun _ c -> c = 'i') 4 "fright"
+String.findIndexi((fun _ c -> c = 'f'), "fright", start = 4, direction = Direction.Forward)
+String.findIndexi((fun _ c -> c = 'f'), "fright", start = 4, direction = Direction.Backwards)  
 
 ////////////
 

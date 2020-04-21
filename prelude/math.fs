@@ -385,6 +385,10 @@ let logisticRange low high x =
 //***************************Array Useful Vector Math******************// 
 let inline (|ToFloatArray|) d = d |> Array.map float
 
+module List =
+    let shuffle (items : 'a list) =
+        items |> List.sortBy (fun _ -> random.Next())
+
 module Array =
     let inline opInPlaceIntoFirst operator (a1 : 'a []) (a2 : 'b []) =
         for i in 0..a1.Length - 1 do
@@ -427,8 +431,9 @@ module Array =
             for j in 0..int den - 1 do
                 outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
         outArr
-    let inline shuffle (arr : 'a []) =
-        (arr |> Array.sortBy (fun _ -> random.Next()))
+
+    let inline shuffle (items : 'a []) =
+        items |> Array.sortBy (fun _ -> random.Next())
 
     let inline Op operator a b = Array.map2 operator a b //NOTE: in defaultof<>,no performance penalty
 
