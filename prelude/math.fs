@@ -33,71 +33,75 @@ module Stats =
           Median : float }
 
     type SimpleStatsInfo =
-        { Slope : float; 
-          Intercept : float; 
-          Covariance : float; 
-          VarianceX : float; 
-          VarianceY : float}
-     
-    let pearsonsCorr (stats:SimpleStatsInfo) = 
+        { Slope : float
+          Intercept : float
+          Covariance : float
+          VarianceX : float
+          VarianceY : float }
+
+    let pearsonsCorr (stats : SimpleStatsInfo) =
         stats.Covariance / (sqrt stats.VarianceX * sqrt stats.VarianceY)
-         
+
     let cdf p =
         p
-        |> Array.fold (fun (total, list) v -> 
+        |> Array.fold (fun (total, list) v ->
                let cd = v + total
                cd, cd :: list) (0., [])
         |> snd
         |> Array.ofList
-    
+
     let getDiscreteSample (pcdf : float []) =
         let k, pcdlen = random.NextDouble() * pcdf.[0], pcdf.Length - 1
-        
+
         let rec cummProb idx =
             if k > pcdf.[idx] then cummProb (idx - 1)
             else idx
         abs (cummProb pcdlen - pcdlen)
-    
+
     let discreteSample p = cdf p |> getDiscreteSample
-    
+
     ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
     let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =
         let vec, vec2 = Array.ofSeq vect1, Array.ofSeq vect2
         let xm, ym = vec |> Array.average, vec2 |> Array.average
         let cov_, varx_, vary_ =
-            (vec, vec2) 
-            ||> Array.fold2 
-                    (fun (cov, varx, vary) x y -> 
-                    cov + (x - xm) * (y - ym), varx + (squared (x - xm)), 
-                    vary + (squared (y - ym))) 
-                    (Unchecked.defaultof<'a>, Unchecked.defaultof<'a>, Unchecked.defaultof<'a>)
+            (vec, vec2)
+            ||> Array.fold2
+                    (fun (cov, varx, vary) x y ->
+                    cov + (x - xm) * (y - ym), varx + (squared (x - xm)),
+                    vary + (squared (y - ym)))
+                    (Unchecked.defaultof<'a>, Unchecked.defaultof<'a>,
+                     Unchecked.defaultof<'a>)
         let len = float vec.Length
         let cov, varx, vary = cov_ / len, varx_ / len, vary_ / len
         let beta = cov / varx
-        {Slope = beta; Intercept = ym - beta * xm; 
-         Covariance = cov; VarianceX = varx; VarianceY = vary}
-    
+        { Slope = beta
+          Intercept = ym - beta * xm
+          Covariance = cov
+          VarianceX = varx
+          VarianceY = vary }
+
     let meanDifference (v : float []) =
         let n, nl = float v.Length, v.Length
-        
+
         let M =
-            recurse (fun (i, j, _) -> j = nl) (fun (i, j, x) -> 
+            recurse (fun (i, j, _) -> j = nl) (fun (i, j, x) ->
                 let i', j' =
                     if i = nl - 1 then 0, j + 1
                     else i + 1, j
                 i', j', x + abs (v.[i] - v.[j])) (0, 0, 0.)
             |> third
         M / (n * (n - 1.))
-    
+
     let relativeMeanDiff (v : float []) =
         let meandiff = meanDifference v
         meandiff, meandiff / (v |> Array.average)
-    
+
     let online_variance_mean variance mean_n n x =
         let mean_n' = mean_n + (x - mean_n) / n
         variance + (x - mean_n) * (x - mean_n'), mean_n', n + 1.
-    
-    ///m12 = n = means = 0 
+
+    ///m12 = n = means = 0
     ///| E(X),E(Y), covXY,n
     let online_covariance (mean_n, mean2_n, m12, n) (x, y) =
         let n' = n + 1.
@@ -106,59 +110,77 @@ module Stats =
         let m12' = m12 + (n' - 1.) * delta1 * delta2 - m12 / n'
         let mean_n', mean2_n' = mean_n + delta1, mean2_n + delta2
         mean_n', mean2_n', m12', n'
-    
+
     let online_mean mean_n n x =
         let mean_n' = mean_n + (x - mean_n) / n
         mean_n', n + 1.
-    
+
     ///variance , mean
     let varianceAndMean =
-        function 
+        function
         | x when x = Seq.empty -> 0.0, 0.0
-        | l -> 
+        | l ->
             let mean = Seq.average l
-            (Seq.sumBy (fun x -> (x - mean) ** 2.) l) / (float (Seq.length l)), 
+            (Seq.sumBy (fun x -> (x - mean) ** 2.) l) / (float (Seq.length l)),
             mean
-    
+
+    ///variance , mean
+    let varianceAndMeanf32 =
+        function
+        | x when x = Seq.empty -> 0.0f, 0.0f
+        | l ->
+            let mean = Seq.average l
+            (Seq.sumBy (fun x -> (x - mean) ** 2.f) l) / (float32 (Seq.length l)),
+            mean
+
     let varianceFromMean mean =
-        function 
+        function
         | x when x = Seq.empty -> 0.0
-        | l -> 
+        | l ->
             (Seq.sumBy (fun x -> (x - mean) ** 2.) l) / (float (Seq.length l))
-    
+
     let stddev data =
         varianceAndMean data
         |> fst
         |> sqrt
-    
+
     /// O(n log n) median returns if of even length, returns middle and penmiddelate objects
-    let inline medianGen (x : 'a []) =
-        let sorted = (x |> Array.sort)
-        let xlen, xlenh = x.Length, x.Length / 2
-        xlen % 2 = 0, sorted.[xlenh], sorted.[xlenh - 1]
+
+    let inline medianx two (x : ^a []) =
+        if x.Length = 1 then x.[0]
+        else
+            let iseven, med, medl = 
+                let sorted = Array.sort x
+                let xlen, xlenh = x.Length, x.Length / 2
+                xlen % 2 = 0, sorted.[xlenh], sorted.[xlenh - 1]
     
-    let inline median (x : ^a []) =
-        if x.Length = 1 then float x.[0]
-        else 
-            let iseven, med, medl = medianGen x
-            if iseven then float (med + medl) / 2.
-            else float med
+            if iseven then (med + medl) /two
+            else med
     
+    let medianf32 x = medianx 2f x
+    
+    let median x = medianx 2. x 
+    
+    let standardize (w: float32 []) =
+        let var, mean = varianceAndMeanf32 w
+        let stdev = sqrt (var + 1e-5f)
+        [| for x in w -> (x - mean) / stdev |]
+          
     let inline exponentialAverage f alpha init (data : 'a seq) =
         let y1 =
             defaultArg init (data
                              |> Seq.takeOrMax 5
                              |> Seq.averageBy f)
         data
-        |> Seq.fold (fun s_t x -> 
+        |> Seq.fold (fun s_t x ->
                let y = float (f x)
                alpha * y + (1. - alpha) * s_t) y1
-    
+
     ///low alpha biases towards past, high alpha biases towards most recent
     let inline exponentialSmoothing f alpha eavg point =
         let y = float (f point)
         alpha * y + (1. - alpha) * eavg
-    
+
     let summaryStats (x : float seq) =
         { Sum = Seq.sum x
           Mean = Seq.average x
@@ -167,8 +189,8 @@ module Stats =
           Min = Seq.min x
           Max = Seq.max x
           Median = median (Seq.toArray x) }
-    
-    let distCovariance (v1 : float []) (v2 : float []) same =
+
+    let distCovariance equal (v1 : float []) (v2 : float []) =
         let n = v1.Length
         let nf = float n
         let denum = nf ** 2.
@@ -177,65 +199,68 @@ module Stats =
         let rowMean (m : float [,]) k = (m |> Array2D.foldAt 1 k (+) 0.) / nf
         let colMean (m : float [,]) l = (m |> Array2D.foldAt 0 l (+) 0.) / nf
         let matrixMean (m : float [,]) = (m |> Array2D.fold (+) 0.) / denum
-        
+
         let centredDist (v : float []) =
             let distm = distMatrix v
             let meanoverall = matrixMean distm
             let C = Array2D.create n n 0.
             Threading.Tasks.Parallel.For
-                (0, n, 
-                 fun i -> 
+                (0, n,
+                 fun i ->
                      let curRowMean = rowMean distm i
                      for j in 0..n - 1 do
-                         C.[i, j] <- distm.[i, j] - curRowMean 
+                         C.[i, j] <- distm.[i, j] - curRowMean
                                      - (colMean distm j) + meanoverall)
             |> ignore
             C
-        
+
         let A, B =
-            if same then 
+            if equal then
                 let A2 = centredDist v1
                 A2, A2
-            else 
+            else
                 let AB =
                     [| async { return centredDist v1 }
                        async { return centredDist v2 } |]
                     |> Async.Parallel
                     |> Async.RunSynchronously
                 AB.[0], AB.[1]
-        
+
         let _, _, msum =
             A
-            |> Array2D.fold (fun (i, j, curSum) value -> 
+            |> Array2D.fold (fun (i, j, curSum) value ->
                    let nsum = value * B.[i, j] + curSum
                    if j = n - 1 then i + 1, 0, nsum
                    else i, j + 1, nsum) (0, 0, 0.)
-        
+
         msum / denum
-    
+
     ///Distance Correlation is a useful method of calculating correlation with distance covariance that is able to pick up on non-linearities unlike Pearson's. And more flexible than Spearman's rank.
     let distCorrelation v1 v2 =
         let VXY =
-            [| async { return distCovariance v1 v1 true }
-               async { return distCovariance v2 v2 true } |]
+            [| async { return distCovariance true v1 v1 }
+               async { return distCovariance true v2 v2 } |]
             |> Async.Parallel
             |> Async.RunSynchronously
-        
+
         let vsig = VXY.[0] * VXY.[1]
         if vsig = 0. then 0.
-        else sqrt ((distCovariance v1 v2 false) / sqrt vsig)
+        else sqrt ((distCovariance false v1 v2) / sqrt vsig)
+
 
 //***************************PERMUTATIONS AND CHANCE******************// 
 
 
-let facBigInt n = [ 2I..n ] |> List.fold (*) 1I
+let facBigInt n = [ 2I..n ] |> List.reduce (*) 
 
-let permutationsBigInt n k = [ (n - k + 1I)..n ] |> List.fold (*) 1I
+let permutationsBigInt n k = [ (n - k + 1I)..n ] |> List.reduce (*) 
 
-let fac n = [ 2.0..n ] |> List.fold (*) 1.
+let combinationsBigInt n k = permutationsBigInt n k / facBigInt k
+
+let fac n = List.reduce (*) [ 2.0..n ]
 
 ///num permutations of length n taken k at a time     
-let permutations n k = [ (n - k + 1.)..n ] |> List.fold (*) 1.
+let permutations n k = List.reduce (*) [ (n - k + 1.)..n ] 
 
 ///num permutations of length n taken k at a time where order does not matter
 ///let combinations n k = fac n / (fac k * fac (n - k))
@@ -253,13 +278,12 @@ let rec powerset s =
     }
 
 // From: http://stackoverflow.com/questions/286427/calculating-permutations-in-f
-let rec internal insertions x =
-    function 
-    | [] -> [ [ x ] ]
-    | (y :: ys) as l -> 
-        (x :: l) :: (List.map (fun x -> y :: x) (insertions x ys))
-
 let genPermutations collection =
+    let rec insertions x =
+        function 
+        | [] -> [ [ x ] ]
+        | (y :: ys) as l -> 
+            (x :: l) :: (List.map (fun x -> y :: x) (insertions x ys))
     let rec permutations =
         function 
         | [] -> seq [ [] ]
@@ -267,6 +291,17 @@ let genPermutations collection =
     collection
     |> Seq.toList
     |> permutations
+    |> Seq.toList
+    
+let permutationsTakeN n items =
+    genPermutations items
+    |> Seq.map (List.take n)
+    |> Seq.removeDuplicates
+
+let genCombinations n items =
+    permutationsTakeN n items
+    |> Seq.map List.sort
+    |> Seq.removeDuplicates
 
 type System.Random with
     member t.NextDouble(minim, maxim) = t.NextDouble() * (maxim - minim) + minim
@@ -353,12 +388,13 @@ let scaleTo rmin rmax rangemin rangemax value =
         else rangemin, rangemax, value //translate to 0
     (adjval - adjrmin) / (adjrmax - adjrmin) * (rmax - rmin) + rmin
 
+///If |x| < 1, this allows r number of nonzero digits to appear. roundSig 1 0.0000123 = 0.00001
 let roundSig r x =
     if abs x < 1. then 
         let p = (log10 x) |> abs |> ceil
         let pten = 10. ** p
         let x' = x * pten
-        (round r x')/pten
+        (round (max 0 (r-1)) x')/pten
     else round r x
 
 ///a bit like a bucket, a bit like a round numbers can be flattened to powers of 10.

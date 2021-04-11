@@ -341,3 +341,56 @@ let invchi chi df =
                 let t' = t * m / i
                 t', s + t', i + 1.) (term, term, 1.)
     min sum 1.0
+
+===============================
+Minimum hashing for spelling similarity but there are more effective ways that are also very fast.
+
+///really semantic sugar for set.min
+let minhash hset = hset |> Set.minElement
+
+let minhashes maxiter fset =
+    let rec gethashes count minset fullset =
+        match count with
+        | i when i >= maxiter || Set.count fullset = 0 -> minset
+        | i -> 
+            let minim = minhash fullset
+            gethashes (i + 1) (Set.add minim minset) (Set.remove minim fullset)
+    gethashes 0 Set.empty fset
+
+let strTominHash splitWith = splitWith >> (minhashes 4)
+
+///very fast while fairly accurate way to fuzzy compare 2 strings. Suggested, take 2. For returned score, Higher is better
+let minHashStrDist splitTake str1 str2 =
+    if str1 = "" || str2 = "" then max str1.Length str2.Length
+    else 
+        let k0, k1 =
+            min splitTake (str1.Length - 1), min splitTake (str2.Length - 1)
+        let s1, s2 =
+            strTominHash (splitNatATimeStr k0) str1, 
+            strTominHash (splitNatATimeStr k1) str2
+        (Set.intersect s1 s2).Count
+
+let minHashStrDistSplitWith splitter splitTake str1 str2 =
+    if str1 = "" || str2 = "" then max str1.Length str2.Length
+    else 
+        let k0, k1 =
+            min splitTake (str1.Length - 1), min splitTake (str2.Length - 1)
+        let s1, s2 =
+            strTominHash (splitter k0) str1, strTominHash (splitter k1) str2
+        (Set.intersect s1 s2).Count
+
+--- 
+
+Hard to understand:
+///splits like "abcdef" -> "ab" "cd" "ef"
+let inline splitNatATime hashfunc f op N (data : 'a []) =
+    data.[1..]
+    |> Array.fold (fun (bset, curCombo, i, cnt) curbit -> 
+           if i = N then 
+               bset |> Set.add (hashfunc curCombo), f curbit, 1, cnt + 1 //These will not matter
+           elif cnt = data.Length - 1 then 
+               bset |> Set.add (hashfunc (curCombo </ op /> f curbit)), f curbit, 
+               0, cnt + 1
+           else bset, curCombo </ op /> f curbit, i + 1, cnt + 1) 
+           (Set.empty, f data.[0], 1, 1)
+    |> fst4

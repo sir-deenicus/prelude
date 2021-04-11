@@ -46,6 +46,16 @@ module SimpleBinaryTree =
         | SimpleBinaryTree.Branch(l,r) -> 
             let flatl, flatr = flatten l, flatten r
             Branch(aggr(flatl @ flatr), [toTree2 aggr l; toTree2 aggr r])
+
+    let rec depthFirstMap f =
+        function
+        | SimpleBinaryTree.Node(n) -> SimpleBinaryTree.Node(f n) 
+        | SimpleBinaryTree.Branch(l,r) -> 
+            SimpleBinaryTree.Branch(depthFirstMap f l, depthFirstMap f r)
+             
+    let merge t1 t2 =  
+        SimpleBinaryTree.Branch(t1, t2)
+    
 ////////////////////////////////////////////////////////////
 
 let rec depthFirstInsert f node =
@@ -72,6 +82,14 @@ let rec depthFirstMap f =
     | Branch(n, nodes) ->
         let nodes' = nodes |> List.map (depthFirstMap f)
         Branch(f n, nodes')
+
+let rec depthFirstMapAlt branchNodemap nodemap =
+    function
+    | Node(n) -> Node(nodemap n)
+    | Empty -> Empty
+    | Branch(n, nodes) ->
+        let nodes' = nodes |> List.map (depthFirstMapAlt branchNodemap nodemap)
+        Branch(branchNodemap n, nodes')
 
 let rec depthFirstFilter keepChild f =
     function
