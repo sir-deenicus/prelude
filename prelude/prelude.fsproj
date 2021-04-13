@@ -5,7 +5,7 @@
     <Company />  
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions. .NET Core focused</Description>
-    <Version>1.4</Version>
+    <Version>1.4.3</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -36,10 +36,10 @@
     <Compile Include="Trie.fs" />
     <Compile Include="TrieStringSearch.fs" />
   </ItemGroup>
-  
   <ItemGroup>
     <PackageReference Include="DictionarySlim" Version="1.0.0" />
   </ItemGroup>
+ 
   
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="copy &quot;C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\Prelude.*.nupkg&quot; &quot;C:\Users\cybernetic\Code\Packages\&quot;&#xD;&#xA;&#xD;&#xA;del &quot;C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\Prelude.*.nupkg&quot;" />

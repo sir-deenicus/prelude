@@ -487,9 +487,8 @@ module Array =
 
     let subsetStartingAt start (arr : 'a []) = arr.[start..]
     let subsetEndingAt ends (arr : 'a []) = arr.[..ends]
-    let subsetAt (start, ends) (arr : 'a []) = arr.[start..ends]
 
-    let subsetAtWithSkips (start, skip, ends) (arr : 'a []) =
+    let subsetSkip (start, skip, ends) (arr : 'a []) =
         [| for i in start..skip..ends -> arr.[i] |]
 
     let filterMap cond f seqs =
