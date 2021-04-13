@@ -5,6 +5,7 @@ open Prelude.Common
 open System
 
 let random = new Random()
+
 let pi = Math.PI
 
 let inline pow x y = Math.Pow(float x, float y)
@@ -19,7 +20,7 @@ let nearestPow2 x =
 
 let inline isPowerOf2 (ToFloat x) =
     let y = log2 x
-    y - floor y = 0.
+    round 8 (y - floor y) = 0.
 
 //***************************BASIC STATS******************//
 module Stats =
@@ -42,26 +43,8 @@ module Stats =
     let pearsonsCorr (stats : SimpleStatsInfo) =
         stats.Covariance / (sqrt stats.VarianceX * sqrt stats.VarianceY)
 
-    let cdf p =
-        p
-        |> Array.fold (fun (total, list) v ->
-               let cd = v + total
-               cd, cd :: list) (0., [])
-        |> snd
-        |> Array.ofList
-
-    let getDiscreteSample (pcdf : float []) =
-        let k, pcdlen = random.NextDouble() * pcdf.[0], pcdf.Length - 1
-
-        let rec cummProb idx =
-            if k > pcdf.[idx] then cummProb (idx - 1)
-            else idx
-        abs (cummProb pcdlen - pcdlen)
-
-    let discreteSample p = cdf p |> getDiscreteSample
-
     ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
-    let inline simpleStats (vect1 : ^a seq) (vect2 : seq< ^a >) =
+    let inline simpleStats f (vect1 :float seq) (vect2 : seq<float>) =
         let vec, vec2 = Array.ofSeq vect1, Array.ofSeq vect2
         let xm, ym = vec |> Array.average, vec2 |> Array.average
         let cov_, varx_, vary_ =
@@ -70,8 +53,7 @@ module Stats =
                     (fun (cov, varx, vary) x y ->
                     cov + (x - xm) * (y - ym), varx + (squared (x - xm)),
                     vary + (squared (y - ym)))
-                    (Unchecked.defaultof<'a>, Unchecked.defaultof<'a>,
-                     Unchecked.defaultof<'a>)
+                    (0., 0., 0.)
         let len = float vec.Length
         let cov, varx, vary = cov_ / len, varx_ / len, vary_ / len
         let beta = cov / varx
@@ -366,6 +348,8 @@ type randomInt(rNext, lower, upper) =
     member this.nextunique() = this.uniqueStream() |> Seq.head
     member this.next() = this.stream() |> Seq.head
 
+let randompar = new Random()
+
 //***************************ROUNDING******************//
 let (|RoundTo|) n x = round n x
 
@@ -443,14 +427,7 @@ module Array =
     let inline euclideanDist v v2 = lp_norm (float >> squared) v v2 |> sqrt
 
     let inline manhattanDist v v2 = lp_norm (float >> abs) v v2
-
-    let parts = Array.map (flip (-) 1) [| 2; 3; 3; 2; 3; 1; 1; 3; 1; 2; 2; 1 |]
-    
-    let inline crossproduct (v1 : _ []) (v2 : _ []) =
-        [| for i in 0..4..parts.Length - 4 -> 
-               v1.[parts.[0 + i]] * v2.[parts.[1 + i]] 
-               - v1.[parts.[2 + i]] * v2.[parts.[3 + i]] |]
-    
+      
     let inline normalizeWeights (a : ('a * 'b) []) =
         let tot = Array.sumBy snd a
         Array.map (keepLeft (flip (/) tot)) a
@@ -459,13 +436,13 @@ module Array =
         let total = data |> Array.sum
         data |> Array.iteri (fun i x -> data.[i] <- x / total)
     
-    let inline colAverageGen (numRows : 'b) (typefunc : 'a -> 'b) 
+    let inline colAverageGen (numRows : 'b) (f : 'a -> 'b) 
                (rows : 'a [] []) =
         let den = numRows
-        let outArr = Array.create rows.[0].Length (Unchecked.defaultof<'b>)
+        let outArr = Array.create rows.[0].Length (numRows - numRows) //zero
         for i in 0..rows.[0].Length - 1 do
             for j in 0..int den - 1 do
-                outArr.[i] <- outArr.[i] + typefunc rows.[j].[i] / den
+                outArr.[i] <- outArr.[i] + f rows.[j].[i] / den
         outArr
 
     let inline shuffle (items : 'a []) =
@@ -478,7 +455,8 @@ module Array =
         for i in 0..v1.Length - 1 do
             sum <- v1.[i] * v2.[i] + sum     
         sum
-    let inline magnitude v = dotproduct v v |> sqrt
+
+    let inline magnitude v = sqrt (dotproduct v v)
     
     let inline to_unitvector v =
         let mag = magnitude v
@@ -489,7 +467,7 @@ module Array =
         let total = data |> Array.sum
         data |> Array.map (flip (/) total)
     
-    let sampleOne (a : 'a []) = a.[random.Next(a.Length)]
+    let sampleOne (a : 'a []) = a.[randompar.Next(a.Length)]
     
     let inline normalizeBy f (data : ^a []) =
         let total = data |> Array.sumBy f

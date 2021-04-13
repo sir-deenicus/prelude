@@ -28,6 +28,7 @@
     <Compile Include="onlinelearning.fs" />
     <Compile Include="Reducers.fs" />
     <Compile Include="FibonacciHeap.fs" />
+    <Compile Include="ProbabilityTools.fs" />
     <Compile Include="SimpleGraph.fs" />
     <Compile Include="SimpleDirectedGraph.fs" />
     <Compile Include="SimpleTrees.fs" />

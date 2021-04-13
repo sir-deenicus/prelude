@@ -486,6 +486,7 @@ module Array =
                let mapped = f el in if cond mapped then yield mapped |]
 
     let subsetStartingAt start (arr : 'a []) = arr.[start..]
+
     let subsetEndingAt ends (arr : 'a []) = arr.[..ends]
 
     let subsetSkip (start, skip, ends) (arr : 'a []) =
