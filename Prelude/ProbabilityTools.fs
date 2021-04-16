@@ -18,6 +18,20 @@ module TextHistogram =
     let histogram len dat = genericHistogram id len dat 
 
 module Sampling =   
+    let discreteSampleIndex (ps : float []) =
+        let cdf (prob : _ []) =
+            let cd = Array.create prob.Length prob.[0]  
+            for i in 1..prob.Length - 1 do
+                cd.[i] <- cd.[i-1] + prob.[i]
+            cd 
+        let cummulativeDistr = cdf ps
+        let k = randomx.NextDouble() * cummulativeDistr.[^0]
+    
+        let rec cummProb index =
+            if k > cummulativeDistr.[index] then cummProb (index + 1)
+            else index
+        cummProb 0  
+
     let inline cdf (prob : _ []) =
         let cd = Array.create prob.Length prob.[0]  
         for i in 1..prob.Length - 1 do 
@@ -25,7 +39,7 @@ module Sampling =
             cd.[i] <- (x, snd cd.[i-1] + p)
         cd 
 
-    let getDiscreteSample (cummulativeDistr : ('a * float) []) =
+    let sampleFromCummulative (cummulativeDistr : ('a * float) []) =
         let k = randomx.NextDouble() * (snd cummulativeDistr.[^0]) 
     
         let rec cummProb index =
@@ -34,7 +48,7 @@ module Sampling =
         let i, (item,_) = cummProb 0 
         i, item
     
-    let inline discreteSample p = getDiscreteSample (cdf p) |> snd
+    let inline discreteSample p = sampleFromCummulative (cdf p) |> snd
 
     let discreteSampleN n items = [|for _ in 1..n -> discreteSample items|]
 
@@ -44,7 +58,7 @@ module Sampling =
             | _ when i >= n -> ch
             | [] -> ch
             | choices ->
-                let choice = discreteSample (List.toArray choices)
+                let choice = discreteSample (List.toArray choices) 
                 let rem = List.filter (fst >> (<>) choice) choices
                 sampleN_without_replacement (i + 1) (choice::ch) rem
         sampleN_without_replacement 0 [] items
@@ -67,11 +81,17 @@ module Sampling =
                 sampleWithoutReplacement (i + 1) ((choiceIndex, found.Value)::ch) rem
         sampleWithoutReplacement 0 [] items
 
+
     type DiscreteSampler<'a>(itemProbabilities : ('a * float) seq) =   
-        let cumulativeDist = cdf (Seq.toArray itemProbabilities) 
+
+        let mutable cumulativeDist = cdf (Seq.toArray itemProbabilities) 
+
+        member __.ChangeDistributionWith ps = cumulativeDist <- cdf (Seq.toArray ps)
+
         member __.DrawSamples(n) = 
-            [|for _ in 1..n -> getDiscreteSample cumulativeDist|] 
-        member __.DrawSample() = getDiscreteSample cumulativeDist    
+            [|for _ in 1..n -> sampleFromCummulative cumulativeDist |> snd|] 
+
+        member __.DrawSample() = sampleFromCummulative cumulativeDist    
          
           
 module SampleSummarize =

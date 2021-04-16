@@ -604,7 +604,7 @@ module Array2D =
                 | i -> fold (f state (cIndex dimension rowOrCol i m)) (i + 1)
         fold seed 0
 
-  ///fold at row or column, where index refers dimension
+  ///fold at row or column, where index refers to dimension
   let foldGen index f seed (m:'a[,]) =
         let ix , xi = if index = 1 then 0, 1 else 1, 0 // fold by row or fold by column
         let top = m.GetLength(ix)
