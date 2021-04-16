@@ -604,7 +604,7 @@ module Array2D =
                 | i -> fold (f state (cIndex dimension rowOrCol i m)) (i + 1)
         fold seed 0
 
-  ///fold at row or column
+  ///fold at row or column, where index refers dimension
   let foldGen index f seed (m:'a[,]) =
         let ix , xi = if index = 1 then 0, 1 else 1, 0 // fold by row or fold by column
         let top = m.GetLength(ix)
@@ -613,12 +613,30 @@ module Array2D =
         fold seed 0
 
   let fold f seed (m:'a[,]) = m |> foldGen 1 f seed
-
+ 
   ///isParallel
   let atrow (m:'a [,]) index = Array.Parallel.init (m.GetLength(1)) (fun i -> m.[index, i])
   ///isParallel
   let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
+  let toJaggedArray (a:_ [,]) = 
+      [|for j in 0..a.GetLength(1) - 1 -> 
+          [|for i in 0..a.GetLength(0) - 1 -> a.[i,j]|]|]
+ 
+  let map2 f (a:_ [,]) (b: _ [,]) = 
+      Array2D.init (a.GetLength(0)) (a.GetLength(1)) (fun i j -> f a.[i,j] b.[i,j])
+
+  let pmap2 f (a : _ [,]) (b : _ [,]) =
+      let r, c = a.GetLength(0), a.GetLength(1)
+      let narray = Array2D.create r c (f a.[0, 0] b.[0, 0])
+      Parallel.For(
+          0, r,
+          fun i ->
+            for j in 0..c - 1 do
+               narray.[i, j] <- (f a.[i, j] b.[i, j]))
+      |> ignore
+      narray
+       
 /////////////////////////////STRINGS////////////////////
 
 let (|StrContainsRemove|_|) (t : string) (str : string) =

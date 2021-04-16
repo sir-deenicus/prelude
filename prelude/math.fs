@@ -348,7 +348,8 @@ type randomInt(rNext, lower, upper) =
     member this.nextunique() = this.uniqueStream() |> Seq.head
     member this.next() = this.stream() |> Seq.head
 
-let randompar = new Random()
+///Threadsafe random
+let randomx = new Random()
 
 //***************************ROUNDING******************//
 let (|RoundTo|) n x = round n x
@@ -418,19 +419,23 @@ module Array =
         for i in 0..a1.Length - 1 do
             a1.[i] <- a1.[i] + a2.[i]
     
-    let inline lp_norm f (vec1 : 'a []) (vec2 : 'a []) =
+    let inline lpNorm f (vec1 : 'a []) (vec2 : 'a []) =
         let mutable sum = 0.
         for i in 0..vec1.Length - 1 do
             sum <- f (vec1.[i] - vec2.[i]) + sum
         sum
+        
+    let inline euclideanDist v v2 = lpNorm (float >> squared) v v2 |> sqrt
 
-    let inline euclideanDist v v2 = lp_norm (float >> squared) v v2 |> sqrt
-
-    let inline manhattanDist v v2 = lp_norm (float >> abs) v v2
+    let inline manhattanDist v v2 = lpNorm (float >> abs) v v2
       
     let inline normalizeWeights (a : ('a * 'b) []) =
         let tot = Array.sumBy snd a
         Array.map (keepLeft (flip (/) tot)) a
+
+    let inline normalizeWeightsWith (f:'b->'c) (a : ('a * 'b) []) =
+        let tot = f (Array.sumBy snd a)
+        [|for (x,w) in a -> x, ((f w)/tot:'c)|]
     
     let inline normalizeInPlace data =
         let total = data |> Array.sum
@@ -447,8 +452,6 @@ module Array =
 
     let inline shuffle (items : 'a []) =
         items |> Array.sortBy (fun _ -> random.Next())
-
-    let inline Op operator a b = Array.map2 operator a b //NOTE: in defaultof<>,no performance penalty
 
     let inline dotproduct (v1:_[]) (v2:_[]) =
         let mutable sum = Unchecked.defaultof<'a> 
@@ -467,7 +470,7 @@ module Array =
         let total = data |> Array.sum
         data |> Array.map (flip (/) total)
     
-    let sampleOne (a : 'a []) = a.[randompar.Next(a.Length)]
+    let sampleOne (a : 'a []) = a.[randomx.Next(a.Length)]
     
     let inline normalizeBy f (data : ^a []) =
         let total = data |> Array.sumBy f

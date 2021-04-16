@@ -394,3 +394,47 @@ let inline splitNatATime hashfunc f op N (data : 'a []) =
            else bset, curCombo </ op /> f curbit, i + 1, cnt + 1) 
            (Set.empty, f data.[0], 1, 1)
     |> fst4
+
+
+/////
+
+Old method of sampling from discrete dist
+
+let cdf p =
+    p
+    |> Array.fold (fun (total, list) v ->
+           let cd = v + total
+           cd, cd :: list) (0., [])
+    |> snd
+    |> Array.ofList
+
+let getDiscreteSample (pcdf : float []) =
+    let k, pcdlen = random.NextDouble() * pcdf.[0], pcdf.Length - 1
+
+    let rec cummProb idx =
+        if k > pcdf.[idx] then cummProb (idx - 1)
+        else idx
+    abs (cummProb pcdlen - pcdlen)
+
+Simplified to:
+
+
+let inline cdf (prob : _ []) =
+    let cd = Array.create prob.Length prob.[0] 
+    for i in 1..prob.Length - 1 do
+        let j = (prob.Length - i - 1) 
+        let (x, p) = prob.[i]
+        cd.[j] <- (x, snd cd.[j+1] + p)
+    cd 
+
+let getDiscreteSample (pcdf : ('a * float) []) =
+    let k, pcdlen = 
+        randompar.NextDouble() * (snd pcdf.[0]), pcdf.Length - 1
+    
+    let rec cummProb idx =
+        if k > snd pcdf.[idx] then cummProb (idx - 1)
+        else idx, pcdf.[idx] 
+    let i, (item,_) = cummProb pcdlen 
+    i, item
+
+Final version is reversed.
