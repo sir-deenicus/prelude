@@ -17,16 +17,16 @@ module TextHistogram =
 
     let histogram len dat = genericHistogram id len dat 
 
-module Sampling =   
-    let discreteSampleIndex (ps : float []) =
-        let cdf (prob : _ []) =
-            let cd = Array.create prob.Length prob.[0]  
-            for i in 1..prob.Length - 1 do
-                cd.[i] <- cd.[i-1] + prob.[i]
-            cd 
-        let cummulativeDistr = cdf ps
+module Sampling =  
+
+    let discreteSampleIndex (prob : float []) =  
+        let cummulativeDistr = Array.create prob.Length prob.[0]  
+
+        for i in 1..prob.Length - 1 do
+            cummulativeDistr.[i] <- cummulativeDistr.[i-1] + prob.[i] 
+
         let k = randomx.NextDouble() * cummulativeDistr.[^0]
-    
+
         let rec cummProb index =
             if k > cummulativeDistr.[index] then cummProb (index + 1)
             else index
