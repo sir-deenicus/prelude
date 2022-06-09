@@ -83,13 +83,21 @@ let rec depthFirstMap f =
         let nodes' = nodes |> List.map (depthFirstMap f)
         Branch(f n, nodes')
 
-let rec depthFirstMapAlt branchNodemap nodemap =
+let rec depthFirstMapEx branchNodemap nodemap =
     function
     | Node(n) -> Node(nodemap n)
     | Empty -> Empty
     | Branch(n, nodes) ->
-        let nodes' = nodes |> List.map (depthFirstMapAlt branchNodemap nodemap)
+        let nodes' = nodes |> List.map (depthFirstMapEx branchNodemap nodemap)
         Branch(branchNodemap n, nodes')
+
+let rec depthFirstMapBranches f =
+    function
+    | Node _ as n -> n
+    | Empty -> Empty
+    | Branch(n, nodes) ->
+        let nodes' = nodes |> List.map (depthFirstMapBranches f)
+        Branch(n, nodes') |> f
 
 let rec depthFirstFilter keepChild f =
     function
@@ -189,12 +197,12 @@ let rec countTreeNodesAndCollapseBelow depth n =
     | Node _ -> 1, Node 0
     | Empty -> 0, Empty
 
-//====================================
-
+//==================================== 
 let dispTree f =
     foldTree ("", 0) 
         (fun (s, n) -> s, n + 1)
-        (fun (s, i) n -> s + "\n|" + String.replicate i "_" + f n, i)
+        (fun (s, i) n -> 
+            s + "\n" + String.replicate i " | " + " └──" + f n, i)
         (fun n l ->
             l |> List.fold (fun (s1, i1) (s2, i2) -> s1 + s2, max i1 i2) n)
                 

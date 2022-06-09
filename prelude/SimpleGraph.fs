@@ -7,7 +7,7 @@ open Prelude.Collections.FibonacciHeap
 type IGraph<'Node> = 
     abstract IsDirected : bool   
     abstract HasCycles : bool option 
-    abstract Vertices : seq<'Node> 
+    abstract Vertices : 'Node []
     abstract Edges : ('Node * 'Node) [] 
     abstract RawEdgeData : unit -> Dict<'Node, Hashset<'Node>>
     abstract AddNode : 'Node -> unit
@@ -18,6 +18,7 @@ type IGraph<'Node> =
     abstract RemoveEdge : 'Node * 'Node * bool -> unit
     abstract RemoveEdge : 'Node * 'Node -> unit
     abstract InsertEdge : 'Node * 'Node -> unit
+    abstract ContainsEdge : 'Node * 'Node -> bool option 
 
 type IWeightedGraph<'Node, 'Weight> =
     inherit IGraph<'Node> 
@@ -92,7 +93,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
         Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.tryFind v)
          
     interface IGraph<'a> with
-        member g.Vertices = seq g.Vertices
+        member g.Vertices = g.Vertices
         member g.Edges = g.Edges  
         member g.GetNeighbors n = g.GetEdges n
         member g.IsDirected = false  
@@ -105,6 +106,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
         member g.InsertEdge(u,v) = g.InsertEdge(u,v) |> ignore
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v) |> ignore
         member g.RemoveEdge(u,v, clean) = failwith "No a directed graph"
+        member g.ContainsEdge(u,v) = g.ContainsEdge(u,v) 
 //===================================================//
 
 [<Struct;CustomComparison;CustomEquality>]
@@ -173,7 +175,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     member g.RemoveEdgesWhere f =
         for (v, vs) in keyValueSeqtoPairArray edges do
             for (v2, w) in keyValueSeqtoPairArray vs do
-                if not (f ((v,v2),w)) then g.RemoveEdge(v,v2) |> ignore
+                if f ((v,v2),w) then g.RemoveEdge(v,v2) |> ignore
 
     member g.InsertRange(edgesRaw,?edgeweights) =
         edges.Clear()
@@ -393,7 +395,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         dists, prev
     
     interface IWeightedGraph<'a,float> with
-        member g.Vertices = seq g.Vertices
+        member g.Vertices = g.Vertices
         member g.Edges = Array.map fst g.Edges
         member g.WeightedEdges = g.Edges
         member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
@@ -414,4 +416,5 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         member g.RemoveEdge(u,v,clean) = failwith "No a directed graph"
         member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.InsertEdge(_,_)= failwith "Need weight"
+        member g.ContainsEdge(u,v) = g.ContainsEdge(u,v) 
 

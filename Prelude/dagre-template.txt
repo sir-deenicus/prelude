@@ -1,0 +1,40 @@
+﻿
+<svg id="svgid" width=svgwidth height=svgheight></svg>
+
+<script> 
+
+// Create the input graph
+var g = new dagreD3.graphlib.Graph({ multigraph: true })
+  .setGraph({nodesep: 70,
+    ranksep: 50,
+    __RANK_DIR__
+    marginx: 20,
+    marginy: 20})
+  .setDefaultEdgeLabel(function() { return {}; });
+  
+__NODES_HERE__
+ 
+__EDGES_HERE__ 
+
+// Create the renderer
+var render = new dagreD3.render();
+
+// Set up an SVG group so that we can translate the final graph.
+var svg = d3.select("#svgid"),
+svgGroup = svg.append("g");
+
+// Set up zoom support
+var zoom = d3.zoom().on("zoom", function() {
+      svgGroup.attr("transform", d3.event.transform);
+    });
+svg.call(zoom);
+
+// Run the renderer. This is what draws the final graph.
+render(d3.select("#svgid g"), g);
+
+// Center the graph
+var xCenterOffset = (svg.attr("width") - g.graph().width) / 2;
+svgGroup.attr("transform", "translate(" + xCenterOffset + ", 20)");
+svg.attr("height", g.graph().height + 40);
+
+</script>

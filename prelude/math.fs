@@ -44,16 +44,16 @@ module Stats =
         stats.Covariance / (sqrt stats.VarianceX * sqrt stats.VarianceY)
 
     ///slope/beta , y-intercept/alpha, covariance, variance of x , variance of y
-    let inline simpleStats f (vect1 :float seq) (vect2 : seq<float>) =
+    let inline simpleStats (vect1 :float seq) (vect2 : seq<float>) =
         let vec, vec2 = Array.ofSeq vect1, Array.ofSeq vect2
         let xm, ym = vec |> Array.average, vec2 |> Array.average
         let cov_, varx_, vary_ =
             (vec, vec2)
             ||> Array.fold2
-                    (fun (cov, varx, vary) x y ->
-                    cov + (x - xm) * (y - ym), varx + (squared (x - xm)),
-                    vary + (squared (y - ym)))
-                    (0., 0., 0.)
+                (fun (cov, varx, vary) x y ->
+                cov + (x - xm) * (y - ym), varx + (squared (x - xm)),
+                vary + (squared (y - ym)))
+                (0., 0., 0.)
         let len = float vec.Length
         let cov, varx, vary = cov_ / len, varx_ / len, vary_ / len
         let beta = cov / varx
@@ -233,16 +233,16 @@ module Stats =
 //***************************PERMUTATIONS AND CHANCE******************// 
 
 
-let facBigInt n = [ 2I..n ] |> List.reduce (*) 
+let facBigInt n = [ 2I..n ] |> List.fold (*) 1I 
 
-let permutationsBigInt n k = [ (n - k + 1I)..n ] |> List.reduce (*) 
+let permutationsBigInt n k = [ (n - k + 1I)..n ] |> List.fold (*) 1I
 
 let combinationsBigInt n k = permutationsBigInt n k / facBigInt k
 
-let fac n = List.reduce (*) [ 2.0..n ]
+let fac n = List.fold (*) 1.0 [ 2.0..n ]
 
 ///num permutations of length n taken k at a time     
-let permutations n k = List.reduce (*) [ (n - k + 1.)..n ] 
+let permutations n k = List.fold (*) 1.0 [ (n - k + 1.)..n ] 
 
 ///num permutations of length n taken k at a time where order does not matter
 ///let combinations n k = fac n / (fac k * fac (n - k))
@@ -382,21 +382,52 @@ let roundSig r x =
         (round (max 0 (r-1)) x')/pten
     else round r x
 
+///Same as log10bucket except it clamps with a provided function
+let log10bucketAux clamp x =
+    if x = 0. then 0.
+    elif abs x < 1. then clamp x
+    else 
+        let x' = x |> abs |> clamp
+        
+        let exponent = x' |> log10 |> floor
+        
+        let y_decim = x' * 1. / (10. ** exponent)
+        let y' = clamp y_decim
+        y' * (10. ** exponent) * float (sign x)
+
+///Same as log10bucket except it clamps to ceil instead of rounding
+let log10bucketCeil x = log10bucketAux ceil x
+
+///Same as log10bucket except it clamps to floor instead of rounding
+let log10bucketFloor x = log10bucketAux floor x
+
 ///a bit like a bucket, a bit like a round numbers can be flattened to powers of 10.
 ///10..10..100, 1000...1000...10000, 1000..100..10000 and so on
 ///n controls how many places to "round" by e.g. where to bucket x * 10^3 by 100 or 10 or 1
-let log10bucket n x_ =
-    if x_ = 0. then 0.
-    elif abs x_ < 1. then x_
+let log10bucket n x =
+    if x = 0. then 0.
+    elif abs x < 1. then roundSig n x
     else 
-        let x = x_ |> abs |> round 0
+        let x' = x |> abs |> round 0
         
-        let exponent = x |> log10 |> floor
+        let exponent = x' |> log10 |> floor
         
-        let y_decim = (x * 1. / (10. ** exponent))
-        let y' = y_decim |> round n
-        y' * (10. ** exponent) * (sign x_ |> float)
+        let y_decim = (x' * 1. / (10. ** exponent))
+        let y' = round n (y_decim)
+        y' * (10. ** exponent) * float (sign x)
 
+let logBbucket b n x =
+    if x = 0. then 0.
+    elif abs x < 1. then roundSig n x
+    else 
+        let x' = x |> abs |> round 0
+        
+        let exponent = (log x / log b) |> floor
+        
+        let y_decim = (x' * 1. / (b ** exponent))
+        let y' = round n (y_decim)
+        y' * (b ** exponent) * float (sign x)
+        
 let logistic x = 1. / (1. + exp -x)
 
 let logisticRange low high x =
@@ -538,4 +569,4 @@ let baseNumToString (l : _ []) lmap =
                   | Some d when d < 36. -> string (char (d + 55.))
                   | Some d -> string d + "|") |]
     |> Array.rev
-    |> Strings.joinToString
+    |> String.join

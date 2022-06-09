@@ -42,6 +42,32 @@ let nestif = NestedIfBuilder()
 
 let nestifMaybe = NestedIfMaybeBuilder()   
 
+type ErrorBuilder() =
+    member __.Bind(x:Lazy<'a>, f) =
+        try f (None,Some(x.Force()))
+        with e -> f (Some e, None)
+
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x
+
+type ErrorFallBuilder() =
+    member __.Bind(x:Lazy<'a>, f) =
+        try
+            let a = x.Force()
+            None, Some a
+        with e -> f (Some e, None)
+
+    member __.Delay(f) = f()
+    member __.Return(x) = x
+    member __.ReturnFrom(x) = x
+
+///chain multiple unrelated things that may fail together
+let error = ErrorBuilder()
+
+///exits on first success otherwise falls through on things that may fail repeatedly
+let errorFall = ErrorFallBuilder()
+
 ==================
 
 This did not actually work: 
@@ -438,3 +464,25 @@ let getDiscreteSample (pcdf : ('a * float) []) =
     i, item
 
 Final version is reversed.
+
+
+    static member findIndexi (f, str, ?start, ?direction) =
+        let i = defaultArg start 0
+
+        let isForwards =
+            match direction with
+            | Some Strings.Direction.Backwards -> false
+            | _ -> true
+
+        let len = String.length str
+        if i < 0 || i >= len then None
+        else
+            recurse fst3 (fun (_, j, _) ->
+                let found = f j str.[j]
+                found || (if isForwards then (j + 1) >= len
+                          else (j - 1) < 0),
+                (if isForwards then j + 1
+                 else j - 1),
+                (if found then Some j
+                 else None)) (false, i, None)
+            |> third

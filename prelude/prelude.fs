@@ -13,28 +13,7 @@ type MutableList<'a> = System.Collections.Generic.List<'a>
 
 type Hashset<'a> = System.Collections.Generic.HashSet<'a>
 
-///////ERROR CONTROL FLOW MONADS
-
-type ErrorBuilder() =
-    member __.Bind(x:Lazy<'a>, f) =
-        try f (None,Some(x.Force()))
-        with e -> f (Some e, None)
-
-    member __.Delay(f) = f()
-    member __.Return(x) = x
-    member __.ReturnFrom(x) = x
-
-type ErrorFallBuilder() =
-    member __.Bind(x:Lazy<'a>, f) =
-        try
-            let a = x.Force()
-            None, Some a
-        with e -> f (Some e, None)
-
-    member __.Delay(f) = f()
-    member __.Return(x) = x
-    member __.ReturnFrom(x) = x
-
+///////ERROR CONTROL FLOW MONADS 
 type MaybeBuilder() =
     member __.Bind(x, f) =
         match x with
@@ -46,15 +25,11 @@ type MaybeBuilder() =
 
 let maybe = MaybeBuilder()
 
-type Either<'a,'b> = This of 'a | That of 'b
+type Either<'a,'b> = This of 'a | That of 'b 
 
-///chain multiple unrelated things that may fail together
-let error = ErrorBuilder()
+let fallibleComputation f x = try Result.Ok(f x) with e -> Result.Error e
 
-///exits on first success otherwise falls through on things that may fail repeatedly
-let errorFall = ErrorFallBuilder()
-
-let silentFailComputation f x = try Some(f x) with _ -> None
+let lazyFallibleComputation (x:Lazy<_>) = try Result.Ok(x.Force()) with e -> Result.Error e
 
 ///////////////////
 module Single =
@@ -151,11 +126,7 @@ module Option =
         | Some x -> f x
 
 //////////////////FUNCTIONS//////////
-
-let inline curry f a b = f(a,b)
-
-let inline uncurry f (a,b) = f a b
-
+ 
 let inline flip f a b = f b a
 
 let inline keepLeft f (x,y) = x , f y
@@ -193,7 +164,7 @@ module Pair =
 //no overhead as far as I can see
 let inline (</) x f = f x
 
-let inline (/>) f y = (fun x -> f x y)
+let inline (/>) f y = fun x -> f x y
 
 let inline konst x _ = x
 
@@ -202,6 +173,17 @@ let inline konst2 _ y = y
 let inline fnOr f1 f2 a = f1 a || f2 a
 
 let inline fnAnd f1 f2 a = f1 a && f2 a
+
+let vfst (struct(x, _)) = x
+
+let vsnd (struct(_, y)) = y
+
+
+///repeated application of f n times
+let rec repeat n f x =
+    if n = 0 then x else repeat (n-1) f (f x)
+
+    
 /////SEQUENCES///////////////
 
 ///[Deprecated: do not use] Similar structure to Unfold but does not necessarily generate sequences and meant to be used in place of loops.
@@ -416,6 +398,20 @@ module List =
         [ for x in xs do
             if filter x then yield map x ]
 
+    // remove consecutively duplicate entries from a list 
+    let removeConsecutiveDuplicates items = 
+        let rec filter prev xs = [
+            match xs with 
+            | [] -> ()
+            | x::rest -> 
+                if Some x = prev then yield! filter prev rest 
+                else 
+                    yield x
+                    yield! filter (Some x) rest
+        ]
+    
+        filter None items 
+
 type 'a ``[]`` with
   member self.LastElement = self.[self.Length - 1]
   member self.nthFromLast(i) = self.[self.Length - i - 1]
@@ -425,14 +421,33 @@ module Array =
     let minAndMax typeMinMax (a: _ []) =
         Array.fold (fun (currMin,currMax) x -> min x currMin, max x currMax) (swap typeMinMax) a
 
+    let minAndMaxFloat xs = minAndMax (Single.MinValue, Single.MaxValue) xs 
+
     let minAndMaxBy f typeMinMax (a: _ []) =
         Array.fold (fun (currMin,currMax) x ->
             let fx = f x
             min fx currMin, max fx currMax) (swap typeMinMax) a
 
+    let minAndMaxFloatBy f xs = minAndMaxBy f (Single.MinValue, Single.MaxValue) xs
+
+    let minAndMaxInt32By f xs = minAndMaxBy f (Int32.MinValue, Int32.MaxValue) xs
+
     let dropLast n (a : _ []) = a.[..a.Length - 1 - n]
 
     let removeDuplicates (xs:_ []) = Array.ofSeq (Hashset(xs))
+
+    // remove consecutively duplicate entries from a list 
+    let removeConsecutiveDuplicates (items:'a[]) = 
+        let rec filter prev i = [|
+            if i = items.Length then ()
+            else 
+                if Some items.[i] = prev then yield! filter prev (i + 1)
+                else 
+                    yield items.[i]
+                    yield! filter (Some items.[i]) (i + 1)
+        |]
+    
+        filter None 0 
 
     let swapAtIndex i j (arr : 'a []) =
         let k = arr.[i]
@@ -663,10 +678,7 @@ let (|ContainsGroupsRegEx|_|) t (str : string) =
          |> Some
      else None
 
-module Strings =
-    let inline splitstr (splitby : string []) (str : string) =
-        str.Split(splitby, StringSplitOptions.RemoveEmptyEntries)
-
+module String = 
     //These are duplicated because they are typically used many times in an inner loop. Genericity and function overhead
     //not worth it for more general code
     let removeExtraSpaces (s : string) =
@@ -704,15 +716,23 @@ module Strings =
         sb.ToString().Trim()
 
     let newLine = Environment.NewLine
-    let inline joinToStringWith (sep : string) (s : 'a seq) =
+    
+    let inline joinWith (sep : string) (s : 'a seq) =
         String.Join(sep, s)
-    let inline joinToStringWithSpace (s : 'a seq) = String.Join(" ", s)
-    let inline joinToString s = joinToStringWith "" s
+        
+    let inline joinWithSpace (s : 'a seq) = String.Join(" ", s)
+    
+    let inline join s = joinWith "" s
 
     ///=  [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
     let splitterchars =
         [| ' '; ','; '\t'; '?'; ':'; '–'; ';'; '!'; '|'; '\010'; '\\'; '\"'; '(';
            ')'; '\000'; '\r'; '\n'; '—'; '['; ']'; '“'; '”' |]
+
+    let slpitterStrs =
+        [| " "; ","; "\t"; "?"; ":"; "–"; ";"; "!"; "|"; "\010"; "\\"; "\""; "(";
+           ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—"; "["; "]"; "“"; "”";
+           "--" |]
 
     let inline trim (str : string) = str.Trim()
 
@@ -720,20 +740,26 @@ module Strings =
     let trimWith (charsToTrim : _ []) (s : string) = s.Trim(charsToTrim)
 
     ///charArr (s:string) = s.ToCharArray()
-    let inline char_array (s : string) = s.ToCharArray()
+    let inline toCharArray (s : string) = s.ToCharArray() 
+    
+    let inline split (splitby : string []) (str : string) =
+        str.Split(splitby, StringSplitOptions.RemoveEmptyEntries) 
+         
+    let splitWith s = split [| s |]
+    
+    let splitKeepEmptyWith (splitters : string) (s : string) =
+        s.Split([| splitters |], StringSplitOptions.None)
+         
 
-    let inline splitstrWithSpace (str : string) =
+    let inline splitWithSpace (str : string) =
         str.Split([| " " |], StringSplitOptions.RemoveEmptyEntries)
+        
     let inline splitSentenceRegEx s =
         System.Text.RegularExpressions.Regex.Split
-            (s, @"(?<=(?<![\d.\d])[\n.?!])")
-    let slpitStrs =
-        [| " "; ","; "\t"; "?"; ":"; "–"; ";"; "!"; "|"; "\010"; "\\"; "\""; "(";
-           ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—"; "["; "]"; "“"; "”";
-           "--" |]
+            (s, @"(?<=(?<![\d.\d])[\n.?!])")  
 
     ///Note...does not split periods. Splits to words using the following characters: [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
-    let splitToWords = splitstr slpitStrs
+    let splitToWords = split slpitterStrs
 
     ///Like regular splitToWords but eliminates periods while using a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
     let inline splitToWordsRegEx s =
@@ -742,39 +768,36 @@ module Strings =
              @"(?<![\d\.\d|\d,\d](?!\s))[\s.,?:;\–!#\|\010/\\""()\000\n—\[\]“\>\<”]")
         |> Array.filterMap ((<>) "") (trimWith splitterchars)
 
-    let inline splitstrDontRemove (splitby : string []) (str : string) =
+    let inline splitDontRemove (splitby : string []) (str : string) =
         str.Split(splitby, StringSplitOptions.None)
+        
     let inline splitRegExKeepSplitters splitters s =
         System.Text.RegularExpressions.Regex.Split
             (s, sprintf @"(?<=[%s])" splitters)
+            
     let inline splitregEx splitters s =
         System.Text.RegularExpressions.Regex.Split(s, splitters)
+        
     let inline tolower (str : string) = str.ToLower()
+    
     let inline toupper (str : string) = str.ToUpper()
 
     let inline replace (unwantedstr : string) replacement (str : string) =
         str.Replace(unwantedstr, replacement)
-    let inline replaceAlt replacement (str : string) (unwantedstr : string) =
-        str.Replace(unwantedstr, replacement)
+         
     let replaceN wordsToReplace replacement str =
-        wordsToReplace |> Seq.fold (replaceAlt replacement) str
+        wordsToReplace |> Seq.fold (fun s c -> replace c replacement s) str
 
     ///true when [sub]string is contained in [s]tring
-    let inline strcontains (sub : string) (s : string) = s.Contains(trim sub)
+    let inline contains (sub : string) (s : string) = s.Contains(trim sub)
 
     ///true when [sub]string is contained in [s]tring
-    let inline strcontains_raw (sub : string) (s : string) = s.Contains(sub)
+    let inline containsRaw (sub : string) (s : string) = s.Contains(sub)
+      
+    let containsAll testStrings str =
+        testStrings |> Array.forall (fun t -> contains t str)
 
-    ///true when [sub]string is contained in [s]tring, no trim
-    let inline containedinStrRaw (sub : string) (s : string) = s.Contains(sub)
-
-    ///true when [sub]string is contained in [s]tring
-    let inline containedinStr (s : string) (sub : string) = s.Contains(trim sub)
-
-    let strContainsAll testStrings str =
-        testStrings |> Array.forall (containedinStr str)
-
-    let strContainsNof n (testStrings : string []) (str : string) =
+    let containsNof n (testStrings : string []) (str : string) =
         recurse fst4 (fun (_, _, i, m) ->
             let within = str.Contains testStrings.[i]
 
@@ -794,19 +817,14 @@ module Strings =
             | _ -> failwith "Error in string match"
         Text.RegularExpressions.Regex.Replace(str, pattern, replace)
 
-    let inline strContainsOneOf testStrings str =
-        testStrings |> Seq.tryFind (containedinStr str) |> Option.isSome
-
-    let inline strContainsOneOfRaw testStrings str =
+    let inline containsOneOf testStrings str =
+        testStrings |> Seq.tryFind (fun t -> contains t str) |> Option.isSome
+        
+    let inline containsOneOfRaw testStrings str =
         testStrings
-        |> Array.tryFind (containedinStrRaw str)
+        |> Array.tryFind (fun t -> contains t str) 
         |> Option.isSome
-
-    let splitwSpace = splitstr [| " " |]
-    let splitstrWith s = splitstr [| s |]
-    let splitstrKeepEmptyWith (splitters : string) (s : string) =
-        s.Split([| splitters |], StringSplitOptions.None)
-
+         
     let splitSentenceManual (s:string) =
         let sb = Text.StringBuilder()
         let slist = MutableList()
@@ -835,10 +853,11 @@ module Strings =
             else sb.Append c |> ignore
         if sb.Length > 0 then slist.Add(sb.ToString())
         slist.ToArray()
+        
     let removeSymbols s =
         s
         |> Seq.filter (Char.IsSymbol >> not)
-        |> joinToString
+        |> join
 
     let splitKeepQuotes txt =
         Text.RegularExpressions.Regex.Split(txt, """("[^"]+"|[^"\s]+)""")
@@ -878,10 +897,12 @@ module Strings =
 
     let reverse (s : string) =
         s |> String.mapi (fun i _ -> s.[s.Length - 1 - i])
+        
     let replaceRegEx (patternstring : string) (replacestring : string)
         (inputstring : string) =
         Text.RegularExpressions.Regex.Replace
             (inputstring, patternstring, replacestring)
+            
     let replaceRegExIngoresCase (patternstring : string)
         (replacestring : string) (inputstring : string) =
         Text.RegularExpressions.Regex.Replace
@@ -904,14 +925,14 @@ module Strings =
         sbuilder.ToString()
 
     ///takes a set of words and replaces those words with supplied function
-    let replaceThese f = replaceTheseGen splitstrWithSpace f
+    let replaceThese f = replaceTheseGen splitWithSpace f
 
     ///convenience function to multiply replace within a string. Uses string.replace
     let replaceMultiple words str =
         words
         |> Seq.fold (fun nstr (w, repw) ->
-               if w = "" then nstr
-               else nstr |> replace w repw) str
+            if w = "" then nstr
+            else nstr |> replace w repw) str
 
     ///convenience function to multiply modify a string. similar to replace multiple. Goes well with sprintf. Uses string.replace
     let transformMultiple f words str =
@@ -935,18 +956,19 @@ module Strings =
 
     let capitilizebySpace minlen s =
         s
-        |> splitwSpace
+        |> splitWithSpace
         |> Array.mapi (fun i s ->
                if i = 0 || s.Length > minlen then s |> capitalizeFirstWord
                else s)
-        |> joinToStringWithSpace
+        |> joinWithSpace
 
-    let DecodeFromUtf8Bytes(utf8Bytes : byte []) =
+    let decodeFromUtf8Bytes(utf8Bytes : byte []) =
         System.Text.Encoding.UTF8.GetString(utf8Bytes, 0, utf8Bytes.Length)
+        
     let decodeFromUnicode (stringbytes : byte []) =
         Text.Encoding.Unicode.GetString stringbytes
 
-    let DecodeFromUtf8(utf8String : string) =
+    let decodeFromUtf8(utf8String : string) =
         // copy the string as UTF-8 bytes.
         let utf8Bytes =
             [| for c in utf8String -> byte c |]
@@ -960,20 +982,16 @@ module Strings =
                           outString.Append(c)
                       else outString.Append c
         outString.ToString()
-
-    type Direction =
-        | Forward
-        | Backwards
-
+        
     ///very simple heuristic
     let splitToParagraphs singlebreak (s : string) =
-        if singlebreak then splitstr [| "\n"; "\r\n"; "\r" |] s
-        else splitstr [| "\n\n"; "\r\n\r\n"; "\r\r" |] s
+        if singlebreak then split [| "\n"; "\r\n"; "\r" |] s
+        else split [| "\n\n"; "\r\n\r\n"; "\r\r" |] s
 
     let removeExtrasOfString (strToStrip : string) (s : string) =
         s
-        |> splitstrWith strToStrip
-        |> joinToStringWith strToStrip
+        |> splitWith strToStrip
+        |> joinWith strToStrip
 
     ///e.g. ["a";"b";"c"] -> "a,b and c"
     let joinWithThenAnd (punct : string) andor (strings : string seq) =
@@ -985,60 +1003,40 @@ module Strings =
             let p1 = String.Join(punct, ws.[..ws.Length - 2])
             p1 + " " + andor + " " + ws.LastElement
 
-type String with
-    member __.splitstr (splitby : string []) (str : string) =
-        str.Split(splitby, StringSplitOptions.RemoveEmptyEntries)
-    member t.splitbystr ([<ParamArray>] splitbys : string []) =
-        t.splitstr splitbys t
+type String with 
+    member t.Splitby ([<ParamArray>] splitbys : string []) =
+        String.split splitbys t
+    
     member s.Last = s.[s.Length - 1]
-    member thisStr.splitbystrKeepEmpty ([<ParamArray>] splitbys : string []) =
+    
+    member thisStr.SplitbyKeepEmpty ([<ParamArray>] splitbys : string []) =
         thisStr.Split(splitbys, StringSplitOptions.None)
 
-    member s.toUTF8Bytes() =
+    member s.GetUTF8Bytes() =
         let b = Encoding.Unicode.GetBytes(s)
         Encoding.Convert
             (System.Text.Encoding.Unicode, System.Text.Encoding.UTF8, b)
 
-    member s.getBytes() = System.Text.Encoding.Unicode.GetBytes(s)
-    static member findIndexi (f, str, ?start, ?direction) =
-        let i = defaultArg start 0
+    member s.GetBytes() = System.Text.Encoding.Unicode.GetBytes(s)
 
-        let isForwards =
-            match direction with
-            | Some Strings.Direction.Backwards -> false
-            | _ -> true
+let (|LowerCase|) s = String.tolower s
 
-        let len = String.length str
-        if i < 0 || i >= len then None
-        else
-            recurse fst3 (fun (_, j, _) ->
-                let found = f j str.[j]
-                found || (if isForwards then (j + 1) >= len
-                          else (j - 1) < 0),
-                (if isForwards then j + 1
-                 else j - 1),
-                (if found then Some j
-                 else None)) (false, i, None)
-            |> third
-
-let (|LowerCase|) s = Strings.tolower s
-
-let (|UpperCase|) s = Strings.toupper s
+let (|UpperCase|) s = String.toupper s
 
 let (|StrContains|_|) (testString : string) (str : string) =
     if str.Contains(testString) then Some(true)
     else None
 
 let (|StrContainsOneOf|_|) (testStrings) str =
-    testStrings |> Seq.tryFind (Strings.containedinStr str)
+    testStrings |> Seq.tryFind (fun t -> String.contains t str)
 
 let (|StrContainsAllRemove|_|) (testStrings : string []) str =
-    let pass = testStrings |> Array.forall (Strings.containedinStr str)
-    if pass then Some(testStrings |> Array.fold (Strings.replaceAlt "") str)
+    let pass = testStrings |> Array.forall (fun t -> String.contains t str)
+    if pass then Some(testStrings |> Array.fold (fun s t -> String.replace t "" s) str)
     else None
-
+    
 let (|StrContainsAll|_|) (testStrings : string []) str =
-    let pass = testStrings |> Array.forall (Strings.containedinStr str)
+    let pass = testStrings |> Array.forall (fun t -> String.contains t str)
     if pass then Some true
     else None
 
@@ -1091,6 +1089,18 @@ module Seq =
                 if cond el then yield f el
         }
 
+    // remove consecutively duplicate entries from a sequence
+    let removeConsecutiveDuplicates (items:'a seq) = 
+       let mutable prev = None
+       let e = items.GetEnumerator()
+    
+       seq {
+           while e.MoveNext() do
+               if Some e.Current <> prev then  
+                   yield e.Current
+                   prev <- Some e.Current
+       }
+
     let mapFilter f cond seqs =
         seq {
             for el in seqs do
@@ -1107,16 +1117,10 @@ module Seq =
         let enuma, enumb, enumc =
             (getEnumerator a, getEnumerator b, getEnumerator c)
 
-        seq {
-            let _ =
-                enuma.MoveNext()
-                && enumb.MoveNext()
-                && enumc.MoveNext()
-
-            yield f enuma.Current enumb.Current enumc.Current
+        seq { 
             while enuma.MoveNext()
-                  && enumb.MoveNext()
-                  && enumc.MoveNext() do
+                && enumb.MoveNext()
+                && enumc.MoveNext() do
                 yield f enuma.Current enumb.Current enumc.Current
         }
 
@@ -1124,14 +1128,7 @@ module Seq =
         let enuma, enumb, enumc, enumd =
             (getEnumerator a, getEnumerator b, getEnumerator c, getEnumerator d)
 
-        seq {
-            let _ =
-                enuma.MoveNext()
-                && enumb.MoveNext()
-                && enumc.MoveNext()
-                && enumd.MoveNext()
-
-            yield f enuma.Current enumb.Current enumc.Current enumd.Current
+        seq { 
             while enuma.MoveNext()
                   && enumb.MoveNext()
                   && enumc.MoveNext()
@@ -1143,14 +1140,7 @@ module Seq =
         let enuma, enumb, enumc, enumd =
             (getEnumerator a, getEnumerator b, getEnumerator c, getEnumerator d)
 
-        seq {
-            let _ =
-                enuma.MoveNext()
-                && enumb.MoveNext()
-                && enumc.MoveNext()
-                && enumd.MoveNext()
-
-            yield (enuma.Current, enumb.Current, enumc.Current, enumd.Current)
+        seq { 
             while enuma.MoveNext()
                   && enumb.MoveNext()
                   && enumc.MoveNext()
@@ -1306,35 +1296,37 @@ let secondsToText = function
     | x when x > 3600. * 24. -> ((x / (3600. * 24.)) |> round 1 |> string) + " days"
     | x -> (x |> round 2 |> string) + " seconds"
 
-let numberAndDecimalParts x = floor x, x - floor x
+let integralAndFractionalPart x = floor x, x - floor x 
 
-let inline private toparts unitLarger unitSmaller scalesmall txtlarge txtsmall =
-    string unitLarger
-    + txtlarge
-    + if unitSmaller = 0. then ""
-      else
-          ((unitSmaller * scalesmall) |> round 1 |> string)
-          + txtsmall
+let hoursToText =
+    let numParts x = floor x, x - floor x
 
-let hoursToText = function
-   | h when h < 0. -> "Not yet"
-   | h when h < 1./60. -> string(h * 3600. |> round 1) + " seconds"
-   | h when h < 1. -> string(h * 60. |> round 1) + " minutes"
-   | h when h < 24. ->
-     let hrs,mins = numberAndDecimalParts h
-     toparts hrs mins 60. " hours " " minutes"
-   | h when h > 24. * 7. * 52. ->
-      let totyears, months = numberAndDecimalParts(h/(24. * 7. * 52.))
-      toparts totyears months 12. " years " " months"
-   | h when h >= 730. ->
-      let totmonths, weeks = numberAndDecimalParts(h/730.)
-      toparts totmonths weeks 4.345 " months " " weeks"
-   | h when h > 24. * 7. ->
-      let totweeks, days = numberAndDecimalParts (h/(24. * 7.))
-      toparts totweeks days 7. " weeks " " days"
-   | h  ->
-      let totdays, hrs = numberAndDecimalParts (h/24.)
-      toparts totdays hrs 24. " days " " hours"
+    let partstr (magnHigher:float) magnLower scalesmall (unitHigher:string) unitLower =
+        let lowernum = 
+            if magnLower = 0. then ""
+            else " " + (Math.Round(magnLower * scalesmall).ToString()) + " " + unitLower
+
+        String.Format("{0} {1}{2}", magnHigher.ToString("N0"), unitHigher, lowernum)
+        
+    function
+    | h when h < 0. -> "Already happened"
+    | h when h < 1./60. -> Math.Round(h * 3600.).ToString() + " seconds"
+    | h when h < 1. -> Math.Round(h * 60.).ToString() + " minutes"
+    | h when h < 24. ->
+        let hrs,mins = numParts h
+        partstr hrs mins 60. "hours" "minutes"
+    | h when h > 24. * 7. * 52. ->
+        let totyears, months = numParts(h/(24. * 7. * 52.))
+        partstr totyears months 12. "years" "months"
+    | h when h >= 730. ->
+        let totmonths, weeks = numParts(h/730.)
+        partstr totmonths weeks 4.345 "months" "weeks"
+    | h when h > 24. * 7. ->
+        let totweeks, days = numParts (h/(24. * 7.))
+        partstr totweeks days 7. "weeks" "days"
+    | h  ->
+        let totdays, hrs = numParts (h/24.)
+        partstr totdays hrs 24. "days" "hours"
 
 
 type DateTime with
@@ -1452,10 +1444,10 @@ type IO.File with
          |> stream.WriteArray
 
  ///'appends' to top of text file
- static member ReverseAppendUTF (fname:string) (txt:string) = IO.File.ReverseAppend fname Strings.getBytes Strings.decodeFromUnicode String.Concat txt
+ static member ReverseAppendUTF (fname:string) (txt:string) = IO.File.ReverseAppend fname String.getBytes String.decodeFromUnicode String.Concat txt
 
   ///'appends' to top of text file
- static member ReverseAppendUTF8 (fname:string) (txt:string) = IO.File.ReverseAppend fname Strings.toUTF8Bytes Strings.DecodeFromUtf8Bytes String.Concat txt
+ static member ReverseAppendUTF8 (fname:string) (txt:string) = IO.File.ReverseAppend fname String.toUTF8Bytes String.decodeFromUtf8Bytes String.Concat txt
 
  static member ReadAllTextOrCreate(fname:string) =
      if IO.File.Exists(fname) then
@@ -1472,24 +1464,23 @@ type IO.File with
 
 
 ////////
-
-open Strings
+ 
 
 let tohtmlTableString headers d =
-    let entryFormat horD xs = xs |> Seq.map (fun x -> sprintf "<t%s>%s</t%s>" horD x horD) |> joinToStringWith newLine
+    let entryFormat horD xs = xs |> Seq.map (fun x -> sprintf "<t%s>%s</t%s>" horD x horD) |> String.joinWith String.newLine
     let els =
       d
       |> Seq.map (entryFormat "d" >> fun s -> "<tr>" + s + "</tr>")
-      |> joinToStringWith newLine
+      |> String.joinWith String.newLine
     sprintf "<table>%s%s</table>" (headers |> entryFormat "h") els
 
 let isUrl urlstr =
       let good, uri = Uri.TryCreate(urlstr, UriKind.Absolute)
       good && (uri.Scheme = Uri.UriSchemeHttp || uri.Scheme = Uri.UriSchemeHttps)
 
-let urlencode str = Uri.EscapeDataString str |> replace "%20" "+"
+let urlencode str = Uri.EscapeDataString str |> String.replace "%20" "+"
 
-let urldecode str = Uri.UnescapeDataString str |> replace "+" " "
+let urldecode str = Uri.UnescapeDataString str |> String.replace "+" " "
 
 let cleanURLofParams str =
   let q = System.Text.RegularExpressions.Regex.Matches (str, "[?|#]")
@@ -1672,8 +1663,8 @@ type ConsoleInterface(fname, onData,onError, ?args, ?onExit) =
 
 let buildTableRow (collens : _ []) (row : string []) =
     row
-    |> Array.mapi (fun i s -> Strings.pad collens.[i] s)
-    |> joinToStringWith " | "
+    |> Array.mapi (fun i s -> String.pad collens.[i] s)
+    |> String.joinWith " | "
 
 let makeTable newline headers title (table : string [] []) =
     let hlen = Array.map String.length headers
@@ -1688,13 +1679,14 @@ let makeTable newline headers title (table : string [] []) =
     let t0 =
         table
         |> Array.map (buildTableRow longest)
-        |> joinToStringWith newline
+        |> String.joinWith newline
 
     let hrow =
         [| headers
 
            [| for i in 0..headers.Length - 1 -> String.replicate longest.[i] "-" |] |]
         |> Array.map (buildTableRow longest)
-        |> joinToStringWith newline
+        |> String.joinWith newline
 
-    String.Format("{0}{1}{1}{2}{1}{3}", (toupper title), newline, hrow, t0)
+    String.Format("{0}{1}{1}{2}{1}{3}", (String.toupper title), newline, hrow, t0)
+    

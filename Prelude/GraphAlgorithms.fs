@@ -5,6 +5,7 @@ open Common
 open System
 open SimpleDirectedGraphs
 open Math
+open Prelude.Collections.FibonacciHeap
 
   
 type DAGError<'a> = NotaDAG | IsCyclic of 'a 
@@ -13,23 +14,17 @@ type NotCyclic = NotCyclic
 
 type SortDirection = Ascending | Descending 
   
+
 module WeightedGraph =
-    let mapWeights f (g: IWeightedGraph<_, _>) =
+    let getWeightsDict f (g: IWeightedGraph<_, _>) =
         let d = Dict<_,_>()
         for KeyValue(n, es) in g.RawEdgeWeightData() do
             d.Add
                 (n, [| for KeyValue(n2, w) in es -> n2, f w |]
                      |> Dict.ofSeq)
-        if g.IsDirected then
-           let wg = WeightedDirectedGraph()
-           wg.InsertRange d
-           Choice1Of2 wg
-        else
-            let wg = WeightedGraph()
-            wg.InsertRange d
-            Choice2Of2 wg
+        d
 
-    let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
+    let getWeightsFilteredDict nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
         let d = Dict<_,_>()
         for (KeyValue(n1, es)) in g.RawEdgeWeightData() do
             if nodefilter n1 then
@@ -38,16 +33,99 @@ module WeightedGraph =
                      [| for KeyValue(n2, w) in es do
                          if edgefilter ((n1, n2), w) then yield (n2, w) |]
                      |> Dict.ofSeq)
-        if g.IsDirected then
-           let wg = WeightedDirectedGraph()
-           wg.InsertRange d
-           Choice1Of2 wg
-        else
-            let wg = WeightedGraph()
-            wg.InsertRange d
-            Choice2Of2 wg
+        d
 
-type GraphAlgorithms() =
+    let mapWeights f (g: IWeightedGraph<_, _>) =
+        let d = getWeightsDict f g
+        let wg = WeightedGraph()
+        wg.InsertRange d
+        wg
+
+    let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
+        let d = getWeightsFilteredDict nodefilter edgefilter g 
+        let wg = WeightedGraph()
+        wg.InsertRange d
+        wg  
+    
+    ///for example, given a list [a,b,c] if these are connected in the source graph, they will be connected in the target graph
+    ///which should ideally be empty.
+    let fromVertexList (source:IWeightedGraph<_,_>, target:IWeightedGraph<_,_>) (vs : _ seq) =
+        for a in vs do 
+            for b in vs do
+            match source.GetEdgeValue(a,b) with 
+            | None -> ()
+            | Some w -> 
+                target.AddNode a; target.AddNode b
+                target.InsertWeightedEdge(a,b,w) 
+
+    let ofEdgeList (g:IWeightedGraph<_,_>) (es : _ seq) =
+        for (a,b) in es do 
+            match g.GetEdgeValue(a,b) with
+            | None -> () 
+            | Some w -> 
+                g.AddNode a; g.AddNode b
+                g.InsertWeightedEdge(a,b,w) 
+
+    let ofWeightedEdgeList (g:IWeightedGraph<_,_>) (es : _ seq) =
+        for (a,b,_) as e in es do 
+            g.AddNode a
+            g.AddNode b
+            g.InsertWeightedEdge e
+
+module WeightedDirectedGraph =
+    let mapWeights f (g: IWeightedGraph<_, _>) =
+        let d = WeightedGraph.getWeightsDict f g
+        
+        let wg = WeightedDirectedGraph()
+        wg.InsertRange d
+        wg 
+
+    let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
+        let d = WeightedGraph.getWeightsFilteredDict nodefilter edgefilter g 
+        let wg = WeightedDirectedGraph()
+        wg.InsertRange d
+        wg  
+        
+module DirectedMultiGraph =
+    let mapWeights f (g: DirectedMultiGraph<_, _>) = 
+        let d = Dict<_,_>() 
+        for KeyValue(n, es) in g.EdgeData do
+            d.Add
+                (n, [| for KeyValue(n2, ws) in es -> n2, ResizeArray(Seq.map f ws) |]
+                     |> Dict.ofSeq) 
+                      
+        let wg = DirectedMultiGraph()
+        wg.InsertRange d
+        wg 
+
+    let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
+        let d = WeightedGraph.getWeightsFilteredDict nodefilter edgefilter g 
+        let wg = DirectedMultiGraph()
+        wg.InsertRange d
+        wg  
+
+
+            
+module Graph = 
+    let fromVertexList (source:IGraph<_>, target:IGraph<_>) (vs : _ seq) =
+        for a in vs do 
+            for b in vs do
+            match source.ContainsEdge(a,b) with
+            | Some true -> 
+                target.AddNode a; target.AddNode b
+                target.InsertEdge(a,b) 
+            | _ -> ()
+
+    let getMatchingVertices f (g:IGraph<_>) = 
+        [|for v in g.Vertices do if f v then yield v|]
+
+    let ofEdgeList (g:IGraph<_>) (es : _ seq) =
+        for (a,b) as e in es do 
+            g.AddNode a
+            g.AddNode b
+            g.InsertEdge(e) 
+
+type GraphAlgorithms() = 
     static member isCyclic (g:IGraph<_>) =
         let tempmarks = Hashset()
         let visited = Hashset()
@@ -69,53 +147,69 @@ type GraphAlgorithms() =
                     tempmarks.Remove n |> ignore 
                     res
         if g.IsDirected then
-            if Array.exists hasCycles (Seq.toArray g.Vertices) then
+            if Array.exists hasCycles g.Vertices then
                 Error (IsCyclic errorstate.Value)
             else Ok NotCyclic
         else Error NotaDAG
 
-    static member removeCycles reAddEdges (g:IWeightedGraph<_,_>) =
+    static member private removeCyclesAux insertEdge remove store reAddEdges
+                  (g : IGraph<_>) =
         let cycled = System.Collections.Generic.Stack()
-        let removeds = Hashset() 
+        let removeds = Hashset()
+
         let rec reAdd l =
-            match l with 
+            match l with
             | [] -> ()
-            | (u,v,w)::es -> 
-                g.InsertWeightedEdge(u,v,w)
-                match GraphAlgorithms.isCyclic g with 
-                | Ok NotCyclic -> reAdd es 
-                | _ -> g.RemoveEdge(u,v); reAdd es 
+            | e :: es ->
+                insertEdge e
+                match GraphAlgorithms.isCyclic g with
+                | Ok NotCyclic -> reAdd es
+                | _ -> remove e; reAdd es
+
         let rec innerLoop options focusnode =
-            match options with 
-            | (n0,_)::ns -> 
-                if reAddEdges then 
-                    let w = g.GetEdgeValue (n0, focusnode) |> Option.get
-                    removeds.Add(n0,focusnode,w) |> ignore
-                g.RemoveEdge(n0, focusnode) 
-                match GraphAlgorithms.isCyclic g with 
+            match options with
+            | (n0, _) :: ns ->
+                if reAddEdges then store removeds (n0, focusnode)
+                g.RemoveEdge(n0, focusnode)
+                match GraphAlgorithms.isCyclic g with
                 | Ok NotCyclic as ok -> ok
-                | Error (IsCyclic n) as err when n <> focusnode -> err
-                | Error (IsCyclic _) -> innerLoop ns focusnode
+                | Error(IsCyclic n) as err when n <> focusnode -> err
+                | Error(IsCyclic _) -> innerLoop ns focusnode
                 | _ -> failwith "Unexpected error trying to remove cycles"
             | [] -> Error NotaDAG
+
         let rec removeCycle n =
             cycled.Push n
-            let options = 
-                [for v in g.Ins n -> v, g.GetNodeNeighborCount v |> Option.defaultValue 0] 
-                |> List.sortByDescending snd 
-            match innerLoop options n with 
-            | Ok NotCyclic -> 
-                if reAddEdges then reAdd (List.ofSeq removeds |> List.shuffle) 
-                Ok(Seq.toArray cycled)
-            | Error (IsCyclic n) -> removeCycle n
-            | Error NotaDAG -> Error "Retry with node removal"   
-    
-        match (GraphAlgorithms.isCyclic g) with 
-        | Error (IsCyclic n) -> removeCycle n
-        | Ok NotCyclic -> Ok(Seq.toArray cycled)
-        | Error NotaDAG -> Error "Not a DAG" 
+            let options =
+                [ for v in g.Ins n ->
+                      v, g.GetNodeNeighborCount v |> Option.defaultValue 0 ]
+                |> List.sortByDescending snd
+            match innerLoop options n with
+            | Ok NotCyclic ->
+                let remlist = List.ofSeq removeds
+                if reAddEdges then reAdd (List.shuffle remlist)
+                Ok(Seq.toArray cycled, remlist)
+            | Error(IsCyclic n) -> removeCycle n
+            | Error NotaDAG -> Error "Retry with node removal"
 
-    static member private topologicalSortRaw isdirected vertices f getEdges = 
+        match (GraphAlgorithms.isCyclic g) with
+        | Error(IsCyclic n) -> removeCycle n
+        | Ok NotCyclic -> Ok(Seq.toArray cycled, List.ofSeq removeds)
+        | Error NotaDAG -> Error "Not a DAG"
+
+    static member removeCycles (g : IGraph<_>, ?reAddEdges) =
+        GraphAlgorithms.removeCyclesAux g.InsertEdge g.RemoveEdge
+            (fun h e -> h.Add e |> ignore) (defaultArg reAddEdges true) g
+
+    static member removeCycles (g : IWeightedGraph<_, _>, ?reAddEdges) =
+        let store (removeds : Hashset<_>) (u, v) =
+            let w = g.GetEdgeValue(u, v) |> Option.get
+            removeds.Add(u, v, w) |> ignore
+        GraphAlgorithms.removeCyclesAux g.InsertWeightedEdge
+            (fun (u, v, _) -> g.RemoveEdge(u, v)) store
+            (defaultArg reAddEdges true) g
+
+    static member private topologicalSortAux isdirected (vertices:_[]) f getEdges = 
         let tempmarks = Hashset()  
         let completed = Hashset()
         let stack = Collections.Generic.Stack()
@@ -136,18 +230,17 @@ type GraphAlgorithms() =
                     | None -> () 
                     tempmarks.Remove n |> ignore
                     completed.Add n |> ignore 
-                    stack.Push n   
-                
+                    stack.Push n    
         if not isdirected then Error NotaDAG
-        else
-            let vs = Seq.toArray vertices
-            let len = vs.Length
+        else 
+            let len = vertices.Length
             let mutable i = 0
             while i < len && not error do 
-                let v = vs.[i]
+                let v = vertices.[i]
                 i <- i + 1
                 if not(completed.Contains v || error) then visit v 
-            if error then Error (IsCyclic errorSource.Value) else Result.Ok (Seq.toArray stack)
+            if error then Error (IsCyclic errorSource.Value) 
+            else Result.Ok (Seq.toArray stack)
 
     static member private transformVertices prioritizeVertices (g:IGraph<_>) =
         match prioritizeVertices with
@@ -157,21 +250,70 @@ type GraphAlgorithms() =
             | Ascending ->
                 g.GetNodeNeighborCounts()
                 |> Array.sortBy snd
-                |> Array.map fst :> 'a seq
+                |> Array.map fst  
             | Descending ->
                 g.GetNodeNeighborCounts()
                 |> Array.sortByDescending snd
-                |> Array.map fst :> 'a seq
+                |> Array.map fst  
 
     static member topologicalSort (g : IWeightedGraph<_, _>, ?NodePrioritization) =
         let vertices =
             GraphAlgorithms.transformVertices NodePrioritization g
-        GraphAlgorithms.topologicalSortRaw g.IsDirected vertices keyValueToKey g.GetRawEdges
+        GraphAlgorithms.topologicalSortAux g.IsDirected vertices keyValueToKey g.GetRawEdges
 
     static member topologicalSort (g : IGraph<_>, ?NodePrioritization) =
         let vertices =
             GraphAlgorithms.transformVertices NodePrioritization g
-        GraphAlgorithms.topologicalSortRaw g.IsDirected vertices id g.GetNeighbors
+        GraphAlgorithms.topologicalSortAux g.IsDirected vertices id g.GetNeighbors
+
+    static member private extractShortestPathDijkstra f ((dists: Dict<_,_>, prevs: Dict<_,_>), target) =
+        recurse (fst >> Option.isNone) 
+            (fun (prev,l) ->
+                match prev with 
+                | Some p -> prevs.getOrDefault None p,f(p,dists.[p]) :: l 
+                | _ -> failwith "no path") 
+            (Some target,[])
+            |> snd
+
+    static member shortestPathDijkstra g (source, target) = 
+        GraphAlgorithms.extractShortestPathDijkstra fst (GraphAlgorithms.dijkstrasShortestPath(g, source, target),target)
+    
+    static member shortestPathsDijkstra (g : IWeightedGraph<_, _>) source = 
+        let paths = GraphAlgorithms.dijkstrasShortestPath (g, source)
+        g.Vertices 
+        |> Array.map (fun v -> GraphAlgorithms.extractShortestPathDijkstra id (paths, v))
+        
+    static member dijkstrasShortestPath(g : IWeightedGraph<_, _>, source, ?target) =
+        let dists = Dict.ofSeq [ source, 0. ]
+        let prev = Dict()
+        let vs = g.Vertices
+        let q = FibHeap.create()
+        let visited = Hashset()
+        let nodeMap = Dict()
+        for v in vs do
+            if v <> source then dists.Add(v, Double.MaxValue)
+            let _ = prev.Add(v, None)
+            let n = FibHeap.insert_data q v dists.[v]
+            nodeMap.Add(v, n)
+        recurse (fun stop -> stop || FibHeap.size q <= 0) (fun _ ->
+            let next = FibHeap.extract_min_data q
+            if target.IsSome && next = target.Value then true
+            else
+                let adjs = g.GetRawEdges next
+                let _ = visited.Add next
+                match adjs with
+                | None -> false
+                | Some vs ->
+                    for KeyValue(node2,weight) in vs do
+                        if not (visited.Contains node2) then
+                            let alt = dists.[next] + weight
+                            if alt < dists.[node2] then
+                                dists.[node2] <- alt
+                                prev.[node2] <- Some next
+                                FibHeap.decrease_key q nodeMap.[node2] alt
+                    false) (false)
+        |> ignore
+        dists, prev
 
     static member minimumSpanningTree(g : IWeightedGraph<_, _>, ?domax, ?NodePrioritization) =
         let dir =
@@ -240,8 +382,8 @@ type GraphAlgorithms() =
             | Some v -> loop (v::p) v
         loop [target] target
      
-    static member shortestPath (g:IWeightedGraph<'a,_>,order:'a[],s:'a) = 
-        GraphAlgorithms.extremePath (>) Double.MaxValue order g s
+    static member shortestPath (g:IWeightedGraph<'a,_>,order:'a[],source:'a) = 
+        GraphAlgorithms.extremePath (>) Double.MaxValue order g source
 
     static member shortestPath (g:IWeightedGraph<'a,_>, order:'a[], source:'a, target :'a) = 
         GraphAlgorithms.shortestPath(g,order, source)
@@ -251,8 +393,8 @@ type GraphAlgorithms() =
         GraphAlgorithms.longestPath(g,order, source)
         |> snd |> GraphAlgorithms.readOffPath target
 
-    static member longestPath (g:IWeightedGraph<'a,_>, order:'a[],s:'a) = 
-        GraphAlgorithms.extremePath (<) Double.MinValue order g s
+    static member longestPath (g:IWeightedGraph<'a,_>, order:'a[],source:'a) = 
+        GraphAlgorithms.extremePath (<) Double.MinValue order g source
 
     static member GetNeighbors(g:IGraph<_>, node, ?Degree, ?Filter) = 
         let filter = defaultArg Filter (fun _ -> true)
@@ -274,30 +416,20 @@ type GraphAlgorithms() =
          
 ////////////////////////////  
 
-module GraphVisualization =
-    let rec dispTreeGeneric d maxDepth (fg: IGraph<_>) (visited: Set<_>) 
-            dashes spaces node =
-        match (fg.GetNeighbors node,maxDepth) with
-        | None,_ -> node
-        | _,Some n when d >= n -> node
-        | Some edges,_ -> 
-            let children =
-                edges 
-                |> Array.filterMap (visited.Contains >> not) 
-                       (fun e -> 
-                       spaces + "|" 
-                       + (dispTreeGeneric (d + 1) maxDepth fg (visited.Add node) 
-                              (dashes + "-") (spaces + "|  ") e))
-            dashes + node + "\n" 
-            + (children |> Strings.joinToStringWith Strings.newLine)
+module GraphVisualization =   
+    //get current assembly, load dagre-template text file 
+    let assembly = System.Reflection.Assembly.GetExecutingAssembly()
+    let template = assembly.GetManifestResourceStream("Prelude.dagre-template.txt")
+    //read stream bytes
+    let buffer = Array.create (int template.Length) 0uy
+    let templateBytes = template.Read(buffer, 0, buffer.Length)
+    closeAndDispose template
+    //convert bytes to string
+    let dagreTemplate = System.Text.Encoding.UTF8.GetString(buffer, 0, templateBytes)
 
-    /// renders a graph that is a tree as a string.
-    let dispStringTree d maxDepth g node =
-        dispTreeGeneric d maxDepth g Set.empty "-" " " node 
-
-    let disp (template:string) isleftright svgid w h (vs,es) =
+    let disp isleftright svgid w h (vs,es) =
         let rankdir = if isleftright then """rankdir: "LR",""" else ""
-        template
+        dagreTemplate
             .Replace("__EDGES_HERE__", es)
             .Replace("__NODES_HERE__",vs)
             .Replace("svgid", svgid)
@@ -310,27 +442,79 @@ module GraphVisualization =
     let fixlen maxlen s =
         if String.length s > maxlen then s.Replace(",", "\\n").Replace("/", "\\n")
         else s 
-    
-    let createDagreGraphGen fixlen str maxw h
+       
+    let createDagreWeightedGraph flexwidth edgeStr nodestr fixlen maxw h htmlLabels
         (g : IWeightedGraph<_,_>) = 
+        let arrowType = if g.IsDirected then "" else "arrowhead: 'undirected', " 
+        let labelstyle = if htmlLabels then """labelType: "html", """ else ""
         let vs =
             g.Vertices
-            |> Seq.mapi
-                   (fun i v ->
-                   sprintf "g.setNode(%A, {label:'%s', width:%d, height:%d});" v
-                       (fixlen v) maxw h)
-            |> Strings.joinToStringWith "\n"
+            |> Seq.map (fun v ->
+                    let maxw = match flexwidth with | Some f -> f v | None -> maxw
+                    $"g.setNode('{v}', {{{labelstyle}label:'{(fixlen (nodestr v))}', width:{maxw}, height:{h}}});")
+            |> String.joinWith "\n"
 
         let es =
             g.WeightedEdges 
-            |> Array.mapi
-                   (fun i ((e1, e2), w) ->
-                   sprintf "g.setEdge(%A, %A, {label: %A}, 'e%d')" e1 e2 (str w) i)
-            |> Strings.joinToStringWith "\n"
+            |> Array.mapi (fun i ((e1, e2), w) ->
+                $"g.setEdge('{e1}', '{e2}', {{{labelstyle}{arrowType}label: '{edgeStr w}'}}, 'e{i}')") 
+            |> String.joinWith "\n"
 
-        vs, es  
+        vs, es    
 
-    let createDagreGraph str fixlen maxw h = createDagreGraphGen fixlen str maxw h
+    let createDagreGraph flexwidth nodestr fixlen maxw h htmlLabels
+        (g : IGraph<_>) = 
+        let arrowType =
+            if g.IsDirected then ""
+            else "arrowhead: 'undirected'"
+            
+        let labelstyle = if htmlLabels then """labelType: "html", """ else "" 
+        
+        let startBrace, endBrace = 
+            if arrowType = "" && labelstyle = "" then "", "" else ", { ", " }"
+        
+        let vs =
+            g.Vertices
+            |> Seq.map (fun v ->
+                let maxw = match flexwidth with | Some f -> f v | None -> maxw
+                $"g.setNode('{v}', {{{labelstyle}label:'{(fixlen (nodestr v))}', width:{maxw}, height:{h}}});")
+            |> String.joinWith "\n"
+
+        let es =
+            g.Edges  
+            |> Array.map (fun (e1, e2) ->
+                $"g.setEdge('{e1}', '{e2}'{startBrace}{labelstyle}{arrowType}{endBrace})") 
+            |> String.joinWith "\n"
+        vs, es     
+ 
+
+    type DagreRenderer() =
+        static member DrawWeightedGraph(g:IWeightedGraph<_,_>, svgid, ?maxwidth, ?height, ?canvaswidth, ?canvasheight, ?isleftright, ?maxstrlen, ?weighttostr, ?nodetostr, ?lenfix, ?flexwidth, ?isHtmlLabel) =
+            let maxw, h = defaultArg maxwidth 30, defaultArg height 30
+            let leftright = defaultArg isleftright false
+            let nodestr = defaultArg nodetostr string
+            let weightstr = defaultArg weighttostr string
+            let strlen = defaultArg maxstrlen 19
+            let fix = defaultArg lenfix (fixlen strlen)  
+            let ishtml = defaultArg isHtmlLabel false
+            let canvasw, canvash = defaultArg canvaswidth 800, defaultArg canvasheight 500 
+
+            createDagreWeightedGraph flexwidth weightstr nodestr fix maxw h ishtml g
+            |> disp leftright svgid canvasw canvash  
+
+        static member DrawGraph(g:IGraph<_>, svgid, ?maxwidth, ?height, ?canvaswidth, ?canvasheight, ?isleftright, ?maxstrlen, ?nodetostr, ?lenfix, ?flexwidth, ?isHtmlLabel) =
+            let maxw, h = defaultArg maxwidth 30, defaultArg height 30
+            let leftright = defaultArg isleftright false
+            let nodestr = defaultArg nodetostr string 
+            let strlen = defaultArg maxstrlen 19
+            let fix = defaultArg lenfix (fixlen strlen)  
+            let ishtml = defaultArg isHtmlLabel false
+            let canvasw, canvash = defaultArg canvaswidth 800, defaultArg canvasheight 500 
+
+            createDagreGraph flexwidth nodestr fix maxw h ishtml g
+            |> disp leftright svgid canvasw canvash  
+            
+
     
     //====================================
 

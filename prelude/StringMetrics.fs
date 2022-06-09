@@ -2,7 +2,6 @@
 
 open System
 open Prelude.Common
-open Strings
 
 let inline bithamming zero one (a : ^a) (b : ^a) =
     let rec countbits dist =
@@ -84,7 +83,7 @@ let hammingpad (a : string) (b : string) =
     let diff = abs (a.Length - b.Length)
     let small, big = smaller a b
     let sp = small + String(' ', diff)
-    hamming (char_array big) (char_array sp)
+    hamming (String.toCharArray big) (String.toCharArray sp)
 
 
 let damerauLevenshteinDistance (arr1: 'a []) (arr2: 'a []) =
@@ -147,7 +146,7 @@ let rec backtrackLCS (empty : 'b) join lift combine
             (vec1, vec2, lcsMatrix, (len1 - 1), len2)
 
 let inline backtrackLCS_str table =
-    backtrackLCS "" joinToString string (+) table
+    backtrackLCS "" String.join string (+) table
 
 ///airie fragile -> aie       
 let longestCommonSubSeqStr (word1 : string) (word2 : string) =

@@ -13,10 +13,9 @@
 #nowarn "1125"
 
 //#r @"bin\Release\net47\System.Memory.dll"
-#r "bin\\Debug\\net47\\Microsoft.Experimental.Collections.dll"
-#r @"bin\Debug\net47\Prelude.dll"
+#r @"C:\Users\cybernetic\.nuget\packages\dictionaryslim\1.0.0\lib\netstandard2.1\DictionarySlim.dll"
+#r @"bin\Release\netstandard2.1\Prelude.dll"
  
-
 open Prelude.Math
 open System
 open Prelude.Common
@@ -29,8 +28,7 @@ open Prelude.StringMetrics
 open Prelude.SimpleTrees
 open Prelude.Common.Strings
 open Prelude.SimpleDirectedGraphs
-open Prelude
-open Prelude
+open Prelude 
 
 let g1 = DirectedGraph<int>()
 
@@ -79,61 +77,166 @@ for x in 2..15 do
         if x <> y && x % y = 0 then
             gi.InsertEdge(x,y,1.) |> ignore
 
-gi.ComputeReverseIndex()            
+gi.ComputeReverseIndex()    
 
+let kv = Dict.ofIDict (dict ["A", ResizeArray [1..10]])
+
+for KeyValue(k,sq) in kv do 
+    for i in 0..sq.Count - 1 do sq[i] <- sq[i] * 2
+
+kv
+let proc = System.Diagnostics.Process.GetProcessesByName("explorer")
+
+for p in proc do p.Kill()
+//get current assembly, load dagre-template text file 
+let assembly =  System.Reflection.Assembly.LoadFrom("bin/Release/netstandard2.1/Prelude.dll")
+
+let template = assembly.GetManifestResourceStream("Prelude.dagre-template.txt")
+//read stream bytes
+let buffer = Array.create (int template.Length) 0uy
+let templateBytes = template.Read(buffer, 0, buffer.Length)
+closeAndDispose template
+//convert bytes to string
+System.Text.Encoding.UTF8.GetString(buffer, 0, templateBytes)
 
 let page = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\dagre-template.txt" 
 let disptemplate = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\disp-template.txt"
 
-   
+let disp2(gd:IGraph<string>) =
+    let gtxt = GraphVisualization.createDagreGraphU string 30 30 gd
+    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  true "n1" 1200 1200 gtxt)
+    IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)   
+
 let disp(g0:IWeightedGraph<string,float>) =
     let gtxt = GraphVisualization.createDagreGraph string string 30 30 g0
-    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  false "n1" 600 500 gtxt)
+    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  false "n1" 800 500 gtxt)
     IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)
     
-let removeCycles reAddEdges (g:IWeightedGraph<_,_>) =
-    let cycled = System.Collections.Generic.Stack()
-    let removeds = Hashset() 
-    let rec reAdd l =
-        match l with 
-        | [] -> ()
-        | (u,v,w)::es -> 
-            g.InsertWeightedEdge(u,v,w)
-            match GraphAlgorithms.isCyclic g with 
-            | Ok NotCyclic -> reAdd es 
-            | _ -> g.RemoveEdge(u,v); reAdd es 
-    let rec innerLoop options focusnode =
-        match options with 
-        | (n0,_)::ns -> 
-            if reAddEdges then 
-                let w = g.GetEdgeValue (n0, focusnode) |> Option.get
-                removeds.Add(n0,focusnode,w) |> ignore
-            g.RemoveEdge(n0, focusnode) 
-            match GraphAlgorithms.isCyclic g with 
-            | Ok NotCyclic as ok -> ok
-            | Error (IsCyclic n) as err when n <> focusnode -> err
-            | Error (IsCyclic _) -> innerLoop ns focusnode
-            | _ -> failwith "Unexpected error trying to remove cycles"
-        | [] -> Error NotaDAG
-    let rec removeCycle n =
-        cycled.Push n
-        let options = 
-            [for v in g.Ins n -> v, g.GetNodeNeighborCount v |> Option.defaultValue 0] 
-            |> List.sortByDescending snd 
-        match innerLoop options n with 
-        | Ok NotCyclic -> 
-            if reAddEdges then reAdd (List.ofSeq removeds |> List.shuffle) 
-            Ok(Seq.toArray cycled)
-        | Error (IsCyclic n) -> removeCycle n
-        | Error NotaDAG -> Error "Retry with node removal"   
-    
-    match (GraphAlgorithms.isCyclic g) with 
-    | Error (IsCyclic n) -> removeCycle n
-    | Ok NotCyclic -> Ok(Seq.toArray cycled)
-    | Error NotaDAG -> Error "Not a DAG" 
+
+     
+let gd = DirectedGraph<string>()
+ 
+gd.InsertVertex "X"; gd.InsertVertex "Y";gd.InsertVertex "Z"; gd.InsertVertex "U"
+gd.InsertVertex "A"
+gd.InsertVertex "B"
+gd.InsertVertex "C"
+gd.InsertVertex "D"
+gd.InsertVertex "E"
+gd.InsertVertex "F"
+gd.InsertVertex "G"
+gd.InsertEdge("U", "X")
+gd.InsertEdge("U", "Y")
+gd.InsertEdge("X", "Y")
+gd.InsertEdge("Z", "X")
+gd.InsertEdge("B", "A")
+gd.InsertEdge("C", "B")
+gd.InsertEdge("A", "C") 
+gd.InsertEdge("D", "B" )
+gd.InsertEdge("D", "C" )
+gd.InsertEdge("E", "D" )
+gd.InsertEdge("C", "E")
+gd.InsertEdge("F", "D") 
+gd.InsertEdge("E", "F") 
+gd.InsertEdge("A", "F") 
+gd.InsertEdge("F", "G" )
+gd.InsertEdge("E", "G" )
+gd.InsertEdge("D", "G" )
+gd.InsertEdge("G", "D" )
+gd.InsertEdge("F", "F")
+gd.InsertEdge("G", "C" )
+gd.InsertEdge("G", "Y" )
+gd.InsertEdge("B", "G" )
+gd.InsertEdge("A", "Z" )
+gd.InsertEdge("Y", "D" ) 
+ 
+GraphAlgorithms.removeCycles gd
   
 
+                
+Branch("B", [Node "A"; Branch("C", [Node "D"; Branch("E", [Node "E1"; Node "E1b"])]); Node "F"])
+|> dispTree id
+
+graphToTree gd "X" |> dispTree id  
+
+disp2 gd
+
+let disconnectedSubGraphs (all:Hashset<_>) (first, g:IGraph<_>) = 
+    let seen = Hashset()
+    let edges = Hashset()
+    let rec build v =
+        let inNodes = if g.IsDirected then g.Ins v else Array.empty 
+        let outNodes = Option.defaultValue Array.empty (g.GetNeighbors v) 
+        seen.Add v |> ignore; all.Remove v |> ignore
+        for v2 in inNodes do  
+            edges.Add(v2, v) |> ignore
+            if not(seen.Contains v2) then build v2
+        for v2 in outNodes do 
+            edges.Add(v,v2) |> ignore
+            if not(seen.Contains v2) then build v2
+    build first
+    Seq.toArray edges
+
+let ffb (all:Hashset<_>) (first, g:IGraph<_>) = 
+    let seen = Hashset()
+    let rec build v =
+        [|  let inNodes = if g.IsDirected then g.Ins v else Array.empty
+                          |> Array.filter (seen.Contains >> not)
+            let outNodes = Option.defaultValue Array.empty (g.GetNeighbors v)
+                           |> Array.filter (seen.Contains >> not)
+            seen.Add v |> ignore; all.Remove v |> ignore
+            for v2 in inNodes do  
+                yield (v2,v)  
+                if not(seen.Contains v2) then yield! build v2
+            for v2 in outNodes do 
+                yield (v, v2)  
+                if not(seen.Contains v2) then yield! build v2|] 
+    build first 
+    
+let ff2 (first, g:IGraph<_>) = 
+    let all = Hashset(g.Vertices)
+    let rec loop node1 =
+        [| yield (ffb all (node1, g)) 
+           if all.Count > 0 then yield ffb all (Seq.head all, g)|] 
+    defaultArg first (Seq.head all)
+    |> loop 
+ 
+let gd2 = DirectedGraph<string>()
+ff2 (None, g0) 
+gd2.InsertVertex "X"
+gd2.InsertVertex "Y"
+gd2.InsertVertex "Z"
+gd2.InsertVertex "U"
+gd2.InsertVertex "A"
+gd2.InsertVertex "B"
+gd2.InsertVertex "C"
+gd2.InsertVertex "D"
+gd2.InsertEdge("U", "X")
+gd2.InsertEdge("U", "Y")
+gd2.InsertEdge("X", "Y")
+gd2.InsertEdge("Z", "X")
+gd2.InsertEdge("B", "A")
+gd2.InsertEdge("C", "B")
+gd2.InsertEdge("A", "C") 
+gd2.InsertEdge("D", "B" )
+ 
+let first = (Seq.head gd2.Vertices)
+let all = Hashset (gd2.Vertices)
+Seq.toArray all
+
+
+for _ in 1..100000 do ffb all (first,gd2)
+
+disp2 gd2
+
+
+
 let g0 = CompressedDirectedGraph<string,float,_>(uint16, true)
+ 
+g0.InsertVertex "X"; g0.InsertVertex "Y";g0.InsertVertex "Z"; g0.InsertVertex "U"
+g0.InsertEdge("U", "X", 1.)
+g0.InsertEdge("U", "Y", 1.)
+g0.InsertEdge("X", "Y", 1.)
+g0.InsertEdge("Z", "X", 1.)
 
 g0.InsertVertex "A"
 g0.InsertVertex "B"
@@ -158,10 +261,16 @@ g0.InsertEdge("D", "G" ,5.2)
 g0.InsertEdge("G", "D" ,5.2)
 g0.InsertEdge("F", "F" ,5.21)
 g0.InsertEdge("G", "C" ,5.2)
+g0.InsertEdge("G", "Y" ,5.2)
+g0.InsertEdge("B", "G",1. )
+g0.InsertEdge("A", "Z",1. )
+g0.InsertEdge("Y", "D",1. ) 
+
 g0.ComputeReverseIndex()  
 disp g0
 
-removeCycles true g0
+GraphAlgorithms.removeCycles gd2
+
 disp g0
 GraphAlgorithms.GetNeighbors(g0, "F", 4)
 |> List.groupBy snd
@@ -174,36 +283,40 @@ g0.ForEachEdge ((+) 1.)
 g0.Ins "A"
 g0.Ins "C"
 g0
-
+disp2 gd2
 //let (Ok order) = 
-GraphAlgorithms.isCyclic g0
-GraphAlgorithms.topologicalSort g0
+GraphAlgorithms.isCyclic gd2
+GraphAlgorithms.topologicalSort gd2
 
 for _ in 1..1_000_000 do GraphAlgorithms.isCyclic g0 |> ignore
  
 let (Choice1Of2 tc) = GraphAlgorithms.minimumSpanningTree g0 
 
-let (Ok order) = GraphAlgorithms.topologicalSort g0 
+let (Ok order) = GraphAlgorithms.topologicalSort gd2 
 
-GraphAlgorithms.shortestPath(g0,order,  "A")
+GraphAlgorithms.shortestPath(gd2.toWeightedGraph(),order,  "U")
 |> snd 
-|> GraphAlgorithms.readOffPath "E"   
+|> GraphAlgorithms.readOffPath "Y"   
 
 
-let t = weightedGraphToTree g0 ("C", 0.)
+let t = graphToTree gd ("C")
 
-let tvs, tes = toVerticesAndEdges ("",0.) t
+dispTree id t
 
-let d = WeightedDirectedGraph<string>()
+let tvs, tes = toVerticesAndEdges ("") t
 
-for (v,_) in tvs do d.InsertVertex v
+let d = DirectedGraph<string>()
 
-for (n1,_), (n2,w) in tes do d.InsertEdge(n1,n2,w)
+for (v) in tvs do d.InsertVertex v
 
-disp d
+for (n1), (n2) in tes do d.InsertEdge(n1,n2)
+
+disp2 d
 
 GraphAlgorithms.isCyclic d
-removeCycles true d
+SimpleTrees.treeDepth 0 t
+flattenWithShortPathBias t  
+
 weightedGraphToTree g0 ("C", 0.)
 //|> find (fst >> (=) "D") 
 //|> dispTree string 
@@ -253,6 +366,20 @@ varianceAndMean thevec
                             
 let (v,m,n) = thevec |> Array.fold (fun (v,m,n) x -> online_variance_mean v m n x) (0.,0.,1.)
 v/(n-1.), m
+
+///////
+
+
+timedn 3 {yield 3}
+
+timed { yield 3 } 
+
+timed {for _ in 1..2 -> 3} 
+
+timeds false 3 {for _ in 1..3 -> 3} 
+
+timeds false 0 {for _ in 1..3 -> 3} 
+
 /////////////////////////
 Array.rot 1 [|1..3|] = [|3;1;2|]
 Array.rot 2 [|1..3|] = [|2;3;1|]
@@ -389,7 +516,7 @@ autocomplete 2 t "ca"
 
 [1..10] |> Seq.takeOrMax 40 |> Seq.toArray
 
-[1..100] |> filterMapTruncate 3 ((flip (%) 2) >> ((=) 0)) ((*) 2)
+[1..100] |> Seq.filterMapTake 3 ((flip (%) 2) >> ((=) 0)) ((*) 2)
   
 /////Map Merging
 
@@ -512,9 +639,38 @@ let genPermutations collection =
         | []      -> seq [ [] ]
         | x :: xs -> Seq.concat (Seq.map (insertions x) (permutations xs)) 
     collection |> Seq.toList |> permutations 
+     
 
 ////////////////
+open Prelude.Sampling
+ 
+cdf [|"a",0.5;"b",0.2;"c",0.3|]
 
-containsOne (set ["much"; "many"]) (["how"; "many"; "two"])
-containsOne (set ["much"; "many"]) (["how"; "much"; "two"])
-containsOne (set ["much"; "many"]) (["how"; "old"; "two"])
+[| for _ in 0..9999 -> discreteSample [|"a",5.;"b",2.;"c",2.5; "d", 0.5|] |]
+
+
+open Prelude.Control
+//open FSharp.Control.Reactive
+
+let mm = StateMachineExec<string,int>("Q") 
+
+ 
+let A c = 
+    printfn "In A: %A" c
+    if c <= 5 then 
+        {NextState = "B"; Mem = c + 1}
+    else {NextState = "Q"; Mem = c}
+ 
+
+let B (c) = 
+    printfn "In B: %A" c 
+    {NextState = "A"; Mem = c + 1}
+         
+
+mm.Register("A", A)
+mm.Register("B", B)
+
+mm.Post({NextState = "A"; Mem = 0})
+
+//////////////////////
+
