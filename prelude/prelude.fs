@@ -398,7 +398,7 @@ module List =
         [ for x in xs do
             if filter x then yield map x ]
 
-    // remove consecutively duplicate entries from a list 
+    // remove consecutively duplicate entries from a list
     let removeConsecutiveDuplicates items = 
         let rec filter prev xs = [
             match xs with 
@@ -411,6 +411,11 @@ module List =
         ]
     
         filter None items 
+
+    
+    let cartesianProduct (l1:_ list) (l2: _ list) =
+        [ for a in l1 do
+            for b in l2 -> a,b]
 
 type 'a ``[]`` with
   member self.LastElement = self.[self.Length - 1]
@@ -587,6 +592,10 @@ module Array =
     let selectColumns cs = filterToColumn (flip Set.contains) cs
     let deleteColumns cs =
         filterToColumn (fun cols c -> Set.contains c cols |> not) cs
+          
+    let cartesianProduct (a1:_[]) (a2: _[]) =
+        [| for a in a1 do
+            for b in a2 -> a,b|]
 
 
 //---------Array 2D----------
@@ -634,9 +643,9 @@ module Array2D =
   ///isParallel
   let atcol (m:'a [,]) index = Array.Parallel.init (m.GetLength(0)) (fun i -> m.[i, index])
 
-  let toJaggedArray (a:_ [,]) = 
-      [|for j in 0..a.GetLength(1) - 1 -> 
-          [|for i in 0..a.GetLength(0) - 1 -> a.[i,j]|]|]
+  let toJaggedArray2D (a:_ [,]) = 
+      [|for i in 0..a.GetLength(0) - 1 -> 
+          [| for j in 0..a.GetLength(1) - 1-> a.[i,j]|]|] 
  
   let map2 f (a:_ [,]) (b: _ [,]) = 
       Array2D.init (a.GetLength(0)) (a.GetLength(1)) (fun i j -> f a.[i,j] b.[i,j])
@@ -729,7 +738,7 @@ module String =
         [| ' '; ','; '\t'; '?'; ':'; '–'; ';'; '!'; '|'; '\010'; '\\'; '\"'; '(';
            ')'; '\000'; '\r'; '\n'; '—'; '['; ']'; '“'; '”' |]
 
-    let slpitterStrs =
+    let splitterStrs =
         [| " "; ","; "\t"; "?"; ":"; "–"; ";"; "!"; "|"; "\010"; "\\"; "\""; "(";
            ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—"; "["; "]"; "“"; "”";
            "--" |]
@@ -759,7 +768,7 @@ module String =
             (s, @"(?<=(?<![\d.\d])[\n.?!])")  
 
     ///Note...does not split periods. Splits to words using the following characters: [|" "; "," ; "\t"; "?"; ":" ;"–"; ";" ; "!" ; "|";  "\010";  "\\" ; "\"" ; "(" ; ")"; "\000"; "\r"; "\n"; Environment.NewLine; "—";"[";"]";"“";"”";"--"|]
-    let splitToWords = split slpitterStrs
+    let splitToWords = split splitterStrs
 
     ///Like regular splitToWords but eliminates periods while using a regex to keep numbers like 5.13, 450,230.12 or 4,323 together. Hence slower. splits to words using the following characters:  \s . , ? : ; ! # | \010 / \ " ( ) \000 \n — [ ] “ > <
     let inline splitToWordsRegEx s =
@@ -1223,6 +1232,12 @@ module Seq =
                 incr counter
                 yield en.Current
         }
+         
+    ///infinite hang risk if one is infinite
+    let cartesianProduct (s1: _ seq) (s2: _ seq) =
+        seq {
+            for a in s1 do for b in s2 -> a, b        
+        }
 
     let (|Singleton|) xs =
          if Seq.isEmpty (Seq.tail xs) then Some (Seq.head xs)
@@ -1666,15 +1681,16 @@ let buildTableRow (collens : _ []) (row : string []) =
     |> Array.mapi (fun i s -> String.pad collens.[i] s)
     |> String.joinWith " | "
 
-let makeTable newline headers title (table : string [] []) =
+let makeTable newline headers title (table: string [] []) =
     let hlen = Array.map String.length headers
     let lens = table |> Array.map (Array.map (String.length))
 
     let longest =
-        [| for c in 0..headers.Length - 1 ->
-               max hlen.[c] (Array.selectColumn c lens
-                             |> Array.map Seq.head
-                             |> Array.max) |]
+        [| for c in 0 .. headers.Length - 1 ->
+               max hlen.[c]
+                   (Array.selectColumn c lens
+                    |> Array.map Seq.head
+                    |> Array.max) |]
 
     let t0 =
         table
@@ -1684,9 +1700,8 @@ let makeTable newline headers title (table : string [] []) =
     let hrow =
         [| headers
 
-           [| for i in 0..headers.Length - 1 -> String.replicate longest.[i] "-" |] |]
+           [| for i in 0 .. headers.Length - 1 -> String.replicate longest.[i] "-" |] |]
         |> Array.map (buildTableRow longest)
         |> String.joinWith newline
 
     String.Format("{0}{1}{1}{2}{1}{3}", (String.toupper title), newline, hrow, t0)
-    
