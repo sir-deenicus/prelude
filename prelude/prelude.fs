@@ -340,16 +340,17 @@ type IDictionary<'k,'v> with
 
 module Map =
   let inline sum m = m |> Map.fold (fun sum _ v -> v + sum) Unchecked.defaultof<'a>
-  let addOrUpdate map key f initial =
+ 
+  let addOrUpdate key f initial map =
       match Map.tryFind key map with
       | Some item -> Map.add key (f item) map
       | None -> Map.add key initial map
 
-  let inline Incr map key = addOrUpdate map key ((+) 1.) 1.
+  let inline Incr key map = addOrUpdate key ((+) 1.) 1. map
 
-  let inline defGet map key defaultValue = match Map.tryFind key map with Some item -> item | None -> defaultValue
+  let inline defGet key defaultValue map = match Map.tryFind key map with Some item -> item | None -> defaultValue
 
-  let inline getAdd map key defaultValue =
+  let inline getAdd key defaultValue map =
      match Map.tryFind key map with
        | Some item -> item, map
        | None -> defaultValue, map.Add(key, defaultValue)
@@ -363,9 +364,8 @@ module Map =
   ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
   ///it is clear that the function will run more efficiently
   let merge combine wrap smallermap biggermap =
-    smallermap |> Map.fold (fun newmap key value ->
-                      addOrUpdate newmap key (combine value) (wrap value))
-                      biggermap
+      smallermap
+      |> Map.fold (fun newmap key value -> addOrUpdate key (combine value) (wrap value) newmap) biggermap
 
   let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
@@ -426,14 +426,14 @@ module Array =
     let minAndMax typeMinMax (a: _ []) =
         Array.fold (fun (currMin,currMax) x -> min x currMin, max x currMax) (swap typeMinMax) a
 
-    let minAndMaxFloat xs = minAndMax (Single.MinValue, Single.MaxValue) xs 
+    let minAndMaxFloat xs = minAndMax (Double.MinValue, Double.MaxValue) xs 
 
     let minAndMaxBy f typeMinMax (a: _ []) =
         Array.fold (fun (currMin,currMax) x ->
             let fx = f x
             min fx currMin, max fx currMax) (swap typeMinMax) a
 
-    let minAndMaxFloatBy f xs = minAndMaxBy f (Single.MinValue, Single.MaxValue) xs
+    let minAndMaxFloat32By f xs = minAndMaxBy f (Single.MinValue, Single.MaxValue) xs
 
     let minAndMaxInt32By f xs = minAndMaxBy f (Int32.MinValue, Int32.MaxValue) xs
 
@@ -482,13 +482,13 @@ module Array =
     let inline lastElement (a : 'a []) = a.[a.Length - 1]
     let inline nthFromLastElement i (a : 'a []) = a.[a.Length - i - 1]
     let inline getAt loc (a : 'a []) = a.[loc]
-    let inline countElements array = array |> Array.fold Map.Incr Map.empty
+    let inline countElements array = array |> Array.fold (flip Map.Incr) Map.empty
 
     let countElementsMapThenFilter f filter array =
         array
         |> Array.fold (fun counts item ->
                let item' = f item
-               if filter item' then Map.Incr counts item'
+               if filter item' then Map.Incr item' counts
                else counts) Map.empty
 
     let countAndMax array =
@@ -1011,7 +1011,21 @@ module String =
         | _ ->
             let p1 = String.Join(punct, ws.[..ws.Length - 2])
             p1 + " " + andor + " " + ws.LastElement
+             
+    let toStringArray (s: string) =
+        [| for c in s -> string c |] 
 
+    ///Given a string slidingWindowPairs returns an array of pairs of characters eg "abcd" -> ["ab";"bc";"cd"]
+    let slidingWindowPairs (s: string) =
+        [| for (c1, c2) in s.ToCharArray() |> Array.pairwise -> string c1 + string c2 |]
+
+    ///Given a string chunkedPairs returns an array of pairs of characters but there is no overlap eg "abcd" -> ["ab";"cd"]
+    let chunkedPairs (s : string) =
+        [| for (c1, c2) in Array.pairNexts (s.ToCharArray()) do
+               yield string c1 + string c2
+           if s.Length % 2 <> 0 then yield string s.[s.Length - 1] |]
+
+         
 type String with 
     member t.Splitby ([<ParamArray>] splitbys : string []) =
         String.split splitbys t
@@ -1027,6 +1041,10 @@ type String with
             (System.Text.Encoding.Unicode, System.Text.Encoding.UTF8, b)
 
     member s.GetBytes() = System.Text.Encoding.Unicode.GetBytes(s)
+
+    member this.ToStringArray() =
+        [| for c in this -> string c |]
+
 
 let (|LowerCase|) s = String.tolower s
 
@@ -1173,7 +1191,7 @@ module Seq =
     let inline sortByDescendingLinq f (sequence: 'a seq) =
         sequence.OrderByDescending(System.Func<_, _> f)
 
-    let inline counts (v: seq<'a>) = v |> Seq.fold Map.Incr Map.empty
+    let inline counts (v: seq<'a>) = v |> Seq.fold (flip Map.Incr) Map.empty
 
     let mode (v: seq<'a>) =
         (counts v |> Seq.maxBy (fun x -> x.Value)).Key

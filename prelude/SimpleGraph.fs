@@ -11,6 +11,7 @@ type IGraph<'Node> =
     abstract Edges : ('Node * 'Node) [] 
     abstract RawEdgeData : unit -> Dict<'Node, Hashset<'Node>>
     abstract AddNode : 'Node -> unit
+    abstract RemoveNode : 'Node -> unit
     abstract GetNeighbors : 'Node -> 'Node [] option
     abstract GetNodeNeighborCounts : unit -> ('Node * int) [] 
     abstract GetNodeNeighborCount : 'Node -> int option
@@ -32,13 +33,29 @@ type IWeightedGraph<'Node, 'Weight> =
     abstract IsWeightNormalized : bool
 
 type UndirectedGraph<'a when 'a: equality and 'a: comparison>() = 
-    let edges = Dict<'a,'a Hashset>()
+    let mutable edges = Dict<'a,'a Hashset>()
     member g.EdgeData = edges   
     
-    member g.InsertVertex(v) =
+    member g.InsertNode(v) =
         let contained = edges.ContainsKey v
         if not contained then edges.Add(v,Hashset())
         contained
+
+    member g.InsertRange(edgesraw) =
+       edges.Clear()
+       edges <- edgesraw
+
+    member g.Clear() = edges.Clear()
+
+    member g.AddEdges(edgedata) = 
+        for (v1,v2) in edgedata do
+            let contained = edges.ContainsKey v1
+            if not contained then edges.Add(v1,Hashset())
+            edges[v1].Add(v2) |> ignore
+            let contained = edges.ContainsKey v2
+            if not contained then edges.Add(v2,Hashset())
+            edges[v2].Add(v1) |> ignore
+
 
     member g.Vertices = [|for KeyValue(k,_) in g.EdgeData -> k|] 
 
@@ -47,6 +64,15 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
             for v2 in vs -> lessToLeft(v1,v2) |] 
         |> Hashset
         |> Seq.toArray
+
+    member g.SendMessageToNeighbors f (msg:'b) v =
+        let neighbors = g.GetEdges v
+        match neighbors with
+        | None -> ()
+        | Some nodes -> 
+            for node in nodes do
+                let msg', terminate = f msg node 
+                if terminate then () else g.SendMessageToNeighbors f msg' node                 
 
     member g.Remove(v: 'a) =
         match (edges.tryFind v) with
@@ -67,6 +93,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
             let _ = if elist1.Count = 0 then edges.Remove v1 |> ignore
             return (in0,in1)
         }
+
     member g.InsertEdge(v0,v1) =
         maybe {
             let! elist0 = edges.tryFind v0
@@ -91,6 +118,26 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
     
     member g.NodeNeighborCount v = 
         Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.tryFind v)
+
+    member g.InsertTuples (tuples : _ ) =
+        for (v1, v2) in tuples do
+            g.InsertNode v1 |> ignore
+            g.InsertNode v2 |> ignore
+            g.InsertEdge(v1, v2) |> ignore
+
+    static member fromTuples (tuples:_) =
+        let g = new UndirectedGraph<'a>()
+        for (v1, v2) in tuples do
+            g.InsertNode v1 |> ignore
+            g.InsertNode v2 |> ignore
+            g.InsertEdge(v1, v2) |> ignore
+        g
+
+    member g.InsertFromTuples tuples =
+        for (v1, v2) in tuples do
+            g.InsertNode v1 |> ignore
+            g.InsertNode v2 |> ignore
+            g.InsertEdge(v1, v2) |> ignore
          
     interface IGraph<'a> with
         member g.Vertices = g.Vertices
@@ -102,11 +149,15 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
         member g.HasCycles = None
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
-        member g.AddNode v = g.InsertVertex v |> ignore 
+        member g.AddNode v = g.InsertNode v |> ignore 
+
+        member g.RemoveNode v = g.Remove v |> ignore
+
         member g.InsertEdge(u,v) = g.InsertEdge(u,v) |> ignore
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v) |> ignore
         member g.RemoveEdge(u,v, clean) = failwith "No a directed graph"
         member g.ContainsEdge(u,v) = g.ContainsEdge(u,v) 
+
 //===================================================//
 
 [<Struct;CustomComparison;CustomEquality>]
@@ -184,7 +235,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         if edgeweights.IsSome then
            edgeWeights <- edgeweights.Value
         
-    member g.InsertVertex(s: 'a) =
+    member g.InsertNode(s: 'a) =
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s,Dict())
         contained
@@ -277,8 +328,27 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
                 let! vs = edges.tryFind v1
                 let! w = vs.tryFind v2
                 return w
-        }    
-    
+        }  
+
+    member g.SendMessageToNeighbors f (msg:'b) (v) =
+        let nodes = 
+            match g.GetEdges v with
+            | Some nodes -> nodes
+            | None -> [||]
+        for (node, weight) in nodes do
+            let msg', terminate = f msg v node weight
+            if terminate then () else g.SendMessageToNeighbors f msg' node 
+
+    member g.InsertFromTuples tuples =
+        for (v1,v2,w) in tuples do
+            g.InsertNode v1 |> ignore
+            g.InsertNode v2 |> ignore
+            g.InsertEdge(v1,v2,w) |> ignore
+
+    static member fromTuples tuples =
+        let g = new WeightedGraph<'a>()
+        g.InsertFromTuples tuples 
+
     member g.ContainsEdge (v1, v2) = maybe {
         let! elist0 = edges.tryFind v1
         return (elist0.ContainsKey v2) }
@@ -335,8 +405,8 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
                     
                     let _ = fs.Remove next
                     if (currentCut.Contains v1 || currentCut.Contains v2) then 
-                        let _ = tree.InsertVertex v1
-                        let _ = tree.InsertVertex v2
+                        let _ = tree.InsertNode v1
+                        let _ = tree.InsertNode v2
                         let _ = tree.InsertEdge(v1,v2,w)
                         let _ = currentCut.Remove v1
                         let _ = currentCut.Remove v2
@@ -346,7 +416,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     
     member g.Vertices = [|for k in edges.Keys -> k|] 
 
-    member g.extractShortestPath f ((dists: Dict<_,_>, prev: Dict<_,_>), target) =
+    member g.ExtractShortestPath f ((dists: Dict<_,_>, prev: Dict<_,_>), target) =
         recurse (fst >> Option.isNone) 
             (fun (path,l) ->
                 match path with 
@@ -355,14 +425,14 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
             (Some target,[])
             |> snd
 
-    member g.shortestPaths source = 
-        let paths = g.dijkstrasShortestPath source
+    member g.ShortestPaths source = 
+        let paths = g.DijkstrasShortestPath source
         g.Vertices 
-        |> Array.map (fun v -> g.extractShortestPath id (paths, v))
+        |> Array.map (fun v -> g.ExtractShortestPath id (paths, v))
 
-    member g.shortestPath (source, target) = g.extractShortestPath fst (g.dijkstrasShortestPath(source, target),target)
+    member g.ShortestPath (source, target) = g.ExtractShortestPath fst (g.DijkstrasShortestPath(source, target),target)
          
-    member g.dijkstrasShortestPath(source, ?target) = 
+    member g.DijkstrasShortestPath(source, ?target) = 
         let dists = Dict.ofSeq [source,0.]
         let prev = Dict()
         let vs = g.Vertices
@@ -403,7 +473,9 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         member g.IsDirected = false
         member g.RawEdgeData() = Dict.ofSeq [|for KeyValue(k,v) in g.EdgeData -> k, Hashset(v.Keys)|]  
         member g.RawEdgeWeightData() = g.EdgeData 
-        member g.AddNode v = g.InsertVertex v |> ignore
+        member g.AddNode v = g.InsertNode v |> ignore
+
+        member g.RemoveNode v = g.Remove v |> ignore
         member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.GetRawEdges v = g.GetEdgesRaw v  

@@ -13,8 +13,7 @@ type DAGError<'a> = NotaDAG | IsCyclic of 'a
 type NotCyclic = NotCyclic
 
 type SortDirection = Ascending | Descending 
-  
-
+   
 module WeightedGraph =
     let getWeightsDict f (g: IWeightedGraph<_, _>) =
         let d = Dict<_,_>()
@@ -85,8 +84,14 @@ module WeightedDirectedGraph =
         let wg = WeightedDirectedGraph()
         wg.InsertRange d
         wg  
-        
-module DirectedMultiGraph =
+   
+
+
+module DirectedMultiGraph= 
+    
+    let inline mergeNodes reduceNodeWeights (g:DirectedMultiGraph<_, _>) =
+        Array.iter (g.ModifyNodeEdges reduceNodeWeights) g.Vertices
+
     let mapWeights f (g: DirectedMultiGraph<_, _>) = 
         let d = Dict<_,_>() 
         for KeyValue(n, es) in g.EdgeData do
@@ -97,33 +102,180 @@ module DirectedMultiGraph =
         let wg = DirectedMultiGraph()
         wg.InsertRange d
         wg 
+        
+    let getWeightsFilteredDict nodefilter edgefilter (g: DirectedMultiGraph<_, _>) = 
+        let d = Dict<_,_>()
+        for (KeyValue(n1, es)) in g.EdgeData do
+            if nodefilter n1 then
+                d.Add
+                    (n1,
+                     [| for KeyValue(n2, w) in es do
+                         if edgefilter ((n1, n2), w) then yield (n2, w) |]
+                     |> Dict.ofSeq)
+        d
 
-    let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
-        let d = WeightedGraph.getWeightsFilteredDict nodefilter edgefilter g 
+    let filter nodefilter edgefilter (g: DirectedMultiGraph<_, _>) = 
+        let d = getWeightsFilteredDict nodefilter edgefilter g 
         let wg = DirectedMultiGraph()
         wg.InsertRange d
         wg  
 
-
+    let filterNodes nodefilter (g: DirectedMultiGraph<_, _>) = 
+        for v in g.Vertices do
+            if not (nodefilter v) then
+                g.Remove(v) |> ignore
+        g  
+ 
             
 module Graph = 
-    let fromVertexList (source:IGraph<_>, target:IGraph<_>) (vs : _ seq) =
+    let createSmallWorldGraph (n:int) (k:int) (p:float) =
+        let g = Prelude.SimpleGraphs.UndirectedGraph()
+        let nodes = [|0..n-1|]
+
+        for i in 0..n-1 do
+            g.InsertNode(i) |> ignore
+            // Connect each vertex to its k nearest neighbors on either side
+            for j in 1..k/2 do
+                g.InsertEdge(i, (i+j) % n) |> ignore
+                g.InsertEdge(i, (i-j) % n) |> ignore
+        for u, v in g.Edges do
+            if random.NextDouble() < p then
+                //we need to choose a new node w that is not u or v
+                let choices = nodes |> Array.filter (fun n -> n <> u && n <> v)
+                let w = Array.sampleOne choices 
+                g.RemoveEdge(u, v) |> ignore
+                g.InsertEdge(u, w) |> ignore
+                ()
+        g
+
+    let copyTo (source:IGraph<_>) (target:IGraph<_>) =
+        let vs = source.Vertices
         for a in vs do 
             for b in vs do
-            match source.ContainsEdge(a,b) with
-            | Some true -> 
-                target.AddNode a; target.AddNode b
-                target.InsertEdge(a,b) 
-            | _ -> ()
+                match source.ContainsEdge(a,b) with
+                | Some true -> 
+                    target.AddNode a; target.AddNode b
+                    target.InsertEdge(a,b) 
+                | _ -> ()
 
     let getMatchingVertices f (g:IGraph<_>) = 
         [|for v in g.Vertices do if f v then yield v|]
 
-    let ofEdgeList (g:IGraph<_>) (es : _ seq) =
+    let copyFromEdgeList (es : _ seq) (g:IGraph<_>) =
         for (a,b) as e in es do 
             g.AddNode a
             g.AddNode b
             g.InsertEdge(e) 
+
+    let getAncestors n (g: IGraph<_>) =
+        let rec loop n = 
+            let parents = List.ofArray (g.Ins n)
+            match parents with
+            | [] -> []
+            | _ -> 
+                (List.collect loop parents) @ parents 
+            
+        loop n |> List.distinct
+
+    //the first part of parsing the graph is to get the nodes
+
+    let getNodeName (nodenames: IDict<string, string>) node =
+        if nodenames.ContainsKey node then
+            nodenames.[node]
+        else
+            node
+
+    let getRawNodeParts (node: string) =
+        let parts = node.Splitby("[")
+
+        if parts.Length > 1 then
+            parts.[0].Trim()
+        else
+            parts.[0].Trim()
+
+    let mermaidTxtLines (mgraphtxt: string) =
+        mgraphtxt.Trim().Splitby("\n")
+        |> Array.filter (String.contains "flowchart LR" >> not)
+
+    let private getNodesFromMermaidTxtLines  (lines: string []) =
+        let rawnodes =
+            List.distinct [ for line in lines do
+                                yield! line.Splitby("-->") |> Array.map String.trim ]
+
+        //now we want to use the actual names of the nodes, but first lets make a dictionary from the raw names to the actual names
+        let nodenames =
+            [ for node in rawnodes do
+                  let parts = node.Splitby("[")
+
+                  if parts.Length > 1 then
+                      yield parts.[0].Trim(), parts.[1].Replace("]", "").Trim() ]
+            |> dict
+
+        let nodes =
+            [ for node in rawnodes do
+                  if node.Length > 0 then
+                      //get the rawname
+                      let parts = node.Splitby("[")
+                      let rawname = parts.[0].Trim()
+                      getNodeName nodenames rawname ]
+            |> List.distinct
+
+        nodes, nodenames
+
+    
+    let filterNodes nodefilter (g:IGraph<_>) =
+        for v in g.Vertices do
+            if not (nodefilter v) then
+                g.RemoveNode(v) |> ignore
+        g
+
+    let parseMermaidFlowChart (s: string) =
+        let lines = mermaidTxtLines s
+        let gr = DirectedGraph<string>()
+        let nodes, nodenames = getNodesFromMermaidTxtLines lines
+
+        for node in nodes do
+            gr.InsertNode(node) |> ignore
+
+        //now we need to add the edges
+        for line in lines do
+            let parts = line.Splitby("-->")
+
+            if parts.Length > 1 then
+                let from = getNodeName nodenames (getRawNodeParts parts.[0])
+                let toNode = getNodeName nodenames (getRawNodeParts parts.[1])
+                gr.InsertEdge(from, toNode) |> ignore
+
+        gr
+
+    //parsing flowcharts with edge labels
+
+    let parseLabeledMermaidFlowChart (s: string) =
+        let lines = mermaidTxtLines s
+        let gr = GeneralDirectedGraph<string, string>()
+        let nodes, nodenames = getNodesFromMermaidTxtLines lines
+
+        for node in nodes do
+            gr.InsertNode(node) |> ignore
+        //parsing edges with labels. Labels are text between arrows
+        for line in lines do
+            //there can be text between arrow parts such as -- text -->
+            // "A -- text --> B".SplitBy("--") = ["A ", " text ", "> B"]
+            // "A --> B".SplitBy("--") = ["A ", "> B"]
+            let parts = line.Splitby("--")
+
+            if parts.Length > 1 then
+                let from = getNodeName nodenames (getRawNodeParts parts.[0])
+
+                if parts.Length > 2 then
+                    let toNode = getNodeName nodenames (getRawNodeParts (parts.[2].Replace(">", "")))
+                    let label = parts.[1].Trim()
+                    gr.InsertEdge(from, toNode, label) |> ignore
+                else
+                    let toNode = getNodeName nodenames (getRawNodeParts (parts.[1].Replace(">", "")))
+                    gr.InsertEdge(from, toNode, "") |> ignore 
+        gr
+
 
 type GraphAlgorithms() = 
     static member isCyclic (g:IGraph<_>) =
@@ -518,31 +670,31 @@ module GraphVisualization =
     
     //====================================
 
-    type ForceGraphNodeAndName = {
-        id: string;
-        name: string;
-        ``val`` : int
-    }
+    // type ForceGraphNodeAndName = {
+    //     id: string;
+    //     name: string;
+    //     ``val`` : int
+    // }
 
-    type ForceGraphNode = {
-        id: string; 
-        ``val`` : int
-    } 
+    // type ForceGraphNode = {
+    //     id: string; 
+    //     ``val`` : int
+    // } 
 
-    type ForceGraphEdge = {
-        source: string;
-        target: string; 
-    }
+    // type ForceGraphEdge = {
+    //     source: string;
+    //     target: string; 
+    // }
 
-    type ForceGraph =
-        { nodes: ForceGraphNode seq
-          links: ForceGraphEdge seq }
-        static member FromGraph(g: IGraph<_>) =
-            { nodes =
-                  g.Vertices
-                  |> Seq.map (fun v ->
-                      { id = v; ``val`` = 1 })
-              links =
-                  g.Edges
-                  |> Array.map (fun (n1, n2) ->
-                      { source = n1; target = n2 }) }     
+    // type ForceGraph =
+    //     { nodes: ForceGraphNode seq
+    //       links: ForceGraphEdge seq }
+    //     static member FromGraph(g: IGraph<_>) =
+    //         { nodes =
+    //               g.Vertices
+    //               |> Seq.map (fun v ->
+    //                   { id = v; ``val`` = 1 })
+    //           links =
+    //               g.Edges
+    //               |> Array.map (fun (n1, n2) ->
+    //                   { source = n1; target = n2 }) }     

@@ -521,7 +521,14 @@ module Array =
     let inline colAverageFloats (rows : 'a [] []) =
         colAverageGen (float rows.Length) float rows
 
+    let linspace (start : float) (stop : float) (num : int) =
+        let step = (stop - start) / float (num - 1)
+        [| for i in 0..num - 1 -> start + step * float i |]
 
+module Seq =
+    let inline expectedValue (vs:_ seq) = 
+        vs |> Seq.sumBy (fun (v, p) -> v * p) 
+    
 ///O(n) in place  
 type ``[]``<'a> with
     member arr.permuteYates() =

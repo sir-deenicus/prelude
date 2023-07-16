@@ -261,7 +261,7 @@ module ProbabilityTools =
         if t then (a + 1., b)
         else (a, b + 1.)
 
-    let updateDirichlet (m : Map<_, _>) x = Map.addOrUpdate m x ((+) 1.) 1.5 //prior = 0.5
+    let updateDirichlet (m : Map<_, _>) x = Map.addOrUpdate x ((+) 1.) 1.5 m//prior = 0.5
 
 module Samplers =
     let rec sample_beta n a b = 
