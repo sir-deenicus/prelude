@@ -262,7 +262,7 @@ module Dict =
   let ofIDict (d:Collections.Generic.IDictionary<'a,'b>) = Dict d
 
 type Collections.Generic.IDictionary<'a, 'b> with
-  member this.tryFindIt key =
+  member this.TryFindIt key =
     let found,v = this.TryGetValue key
     if found then Some v else None
 
@@ -270,32 +270,32 @@ type Dictionary<'a,'b>  with
  // static member ofSeq values = let d = Dict() in values |> Seq.iter (fun kv -> d.Add(kv)); d
   static member ofSeq values = Dict(values |> dict)
 
-  member this.iter f = for (DictKV(_,v)) in this do f v
-  member this.getOrDefault def key =
+  member this.Iter f = for (DictKV(_,v)) in this do f v
+  member this.GetOrDefault(key, def) =
      let found,v = this.TryGetValue key
      if found then v else def
 
-  member this.tryFind key =
+  member this.TryFind key =
     let found,v = this.TryGetValue key
     if found then Some v else None
 
  ///Fold over values in dictionary
-  member this.foldV f init = this.Values |> Seq.fold f init
+  member this.FoldValues(init, f) = this.Values |> Seq.fold f init
 
-  member this.ExpandElseAdd key expand def =
+  member this.ExpandElseAdd(key, expand, def) =
      let found , v = this.TryGetValue key
      if found then
         this.[key] <- expand (v)
      else
        this.Add(key,def)
 
-  member this.GetElseAdd key def =
+  member this.GetElseAdd(key, def) =
     let found,v = this.TryGetValue key
     if found then v else this.Add(key,def); def
 
-  member this.foldKV f init = this |> Seq.fold f init
+  member this.FoldKeyValues(init, f) = this |> Seq.fold f init
 
-  member this.fold f init =
+  member this.Fold(init, f) =
      let mutable x = init
      for (DictKV(k,v)) in this do
        x <- f x k v
@@ -311,7 +311,7 @@ type Dictionary<'a,'b>  with
 ///    | 1 -> 1
 ///    | n -> memoize mem fib (n-1) + memoize mem fib (n-2)
 let inline memoize (mem:IDict<_,_>) f x =
-    match mem.tryFindIt x with
+    match mem.TryFindIt x with
     | None ->
         let y = f x
         mem.Add(x,y)
@@ -319,7 +319,7 @@ let inline memoize (mem:IDict<_,_>) f x =
     | Some y -> y
 
 let inline memoizeC (mem:Collections.Concurrent.ConcurrentDictionary<_,_>) f x =
-    match mem.tryFindIt x with
+    match mem.TryFindIt x with
     | None ->
         let y = f x
         mem.AddOrUpdate(x,y, (fun _ _ -> y)) 
@@ -327,7 +327,7 @@ let inline memoizeC (mem:Collections.Concurrent.ConcurrentDictionary<_,_>) f x =
 
 type IDictionary<'k,'v> with
    ///in combine, the first element is the source dictionary's and the other is the other's
-   member t.MergeWith combine otherDict =
+   member t.MergeWith(combine, otherDict) =
      for (DictKV(key, item)) in otherDict do
         let isin, thisItem = t.TryGetValue key
         if isin then t.[key] <- combine thisItem item
@@ -339,35 +339,35 @@ type IDictionary<'k,'v> with
         if not isin then t.Add(key,item)
 
 module Map =
-  let inline sum m = m |> Map.fold (fun sum _ v -> v + sum) Unchecked.defaultof<'a>
+    let inline sum m = m |> Map.fold (fun sum _ v -> v + sum) Unchecked.defaultof<'a>
  
-  let addOrUpdate key f initial map =
-      match Map.tryFind key map with
-      | Some item -> Map.add key (f item) map
-      | None -> Map.add key initial map
+    let addOrUpdate key f initial map =
+        match Map.tryFind key map with
+        | Some item -> Map.add key (f item) map
+        | None -> Map.add key initial map
 
-  let inline Incr key map = addOrUpdate key ((+) 1.) 1. map
+    let inline incr key map = addOrUpdate key ((+) 1.) 1. map
 
-  let inline defGet key defaultValue map = match Map.tryFind key map with Some item -> item | None -> defaultValue
+    let inline defGet key defaultValue map = match Map.tryFind key map with Some item -> item | None -> defaultValue
 
-  let inline getAdd key defaultValue map =
-     match Map.tryFind key map with
-       | Some item -> item, map
-       | None -> defaultValue, map.Add(key, defaultValue)
+    let inline getAdd key defaultValue map =
+        match Map.tryFind key map with
+        | Some item -> item, map
+        | None -> defaultValue, map.Add(key, defaultValue)
 
-  let inline normalize (m : Map<'a, 'b>) =
-    let total = sum m
-    Map.map (fun _ v -> v / total) m
+    let inline normalize (m : Map<'a, 'b>) =
+        let total = sum m
+        Map.map (fun _ v -> v / total) m
 
-  let flippedGet themap = flip (defGet themap)
+    let flippedGet themap = flip (defGet themap)
 
-  ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
-  ///it is clear that the function will run more efficiently
-  let merge combine wrap smallermap biggermap =
-      smallermap
-      |> Map.fold (fun newmap key value -> addOrUpdate key (combine value) (wrap value) newmap) biggermap
+    ///the order of small and big does not affect semantics as long as the expand function is commutative. Instead if you know which map is small then
+    ///it is clear that the function will run more efficiently
+    let merge combine wrap smallermap biggermap =
+        smallermap
+        |> Map.fold (fun newmap key value -> addOrUpdate key (combine value) (wrap value) newmap) biggermap
 
-  let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
+    let inline sumGen f m = m |> Map.fold (fun csum _ x -> f x csum) 0.
 
 
 module DictionarySlim =
@@ -482,13 +482,13 @@ module Array =
     let inline lastElement (a : 'a []) = a.[a.Length - 1]
     let inline nthFromLastElement i (a : 'a []) = a.[a.Length - i - 1]
     let inline getAt loc (a : 'a []) = a.[loc]
-    let inline countElements array = array |> Array.fold (flip Map.Incr) Map.empty
+    let inline countElements array = array |> Array.fold (flip Map.incr) Map.empty
 
     let countElementsMapThenFilter f filter array =
         array
         |> Array.fold (fun counts item ->
                let item' = f item
-               if filter item' then Map.Incr item' counts
+               if filter item' then Map.incr item' counts
                else counts) Map.empty
 
     let countAndMax array =
@@ -1191,7 +1191,7 @@ module Seq =
     let inline sortByDescendingLinq f (sequence: 'a seq) =
         sequence.OrderByDescending(System.Func<_, _> f)
 
-    let inline counts (v: seq<'a>) = v |> Seq.fold (flip Map.Incr) Map.empty
+    let inline counts (v: seq<'a>) = v |> Seq.fold (flip Map.incr) Map.empty
 
     let mode (v: seq<'a>) =
         (counts v |> Seq.maxBy (fun x -> x.Value)).Key

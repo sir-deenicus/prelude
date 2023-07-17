@@ -422,7 +422,7 @@ type GraphAlgorithms() =
         recurse (fst >> Option.isNone) 
             (fun (prev,l) ->
                 match prev with 
-                | Some p -> prevs.getOrDefault None p,f(p,dists.[p]) :: l 
+                | Some p -> prevs.GetOrDefault(p, None), f(p,dists.[p]) :: l 
                 | _ -> failwith "no path") 
             (Some target,[])
             |> snd
@@ -524,12 +524,12 @@ type GraphAlgorithms() =
                 for KeyValue(v,w) in vs do 
                     if comparer d.[v] (d.[u] + w) then
                         d.[v] <- d.[u] + w
-                        p.ExpandElseAdd v (fun _ -> u) u
+                        p.ExpandElseAdd(v, (fun _ -> u), u)
         d, p
 
     static member readOffPath target (prevs:Dict<_,_>) = 
         let rec loop p target =
-            match prevs.tryFind target with 
+            match prevs.TryFind target with 
             | None -> p
             | Some v -> loop (v::p) v
         loop [target] target
@@ -538,11 +538,11 @@ type GraphAlgorithms() =
         GraphAlgorithms.extremePath (>) Double.MaxValue order g source
 
     static member shortestPath (g:IWeightedGraph<'a,_>, order:'a[], source:'a, target :'a) = 
-        GraphAlgorithms.shortestPath(g,order, source)
+        GraphAlgorithms.shortestPath(g, order, source)
         |> snd |> GraphAlgorithms.readOffPath target
 
     static member longestPath (g:IWeightedGraph<'a,_>, order:'a[], source:'a, target :'a) = 
-        GraphAlgorithms.longestPath(g,order, source)
+        GraphAlgorithms.longestPath(g, order, source)
         |> snd |> GraphAlgorithms.readOffPath target
 
     static member longestPath (g:IWeightedGraph<'a,_>, order:'a[],source:'a) = 

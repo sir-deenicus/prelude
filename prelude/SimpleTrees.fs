@@ -225,22 +225,29 @@ let weightedGraphToTree (fg : IWeightedGraph<_, _>) node0 = graphToTreeWith fst 
 
 let graphToTree (fg : IGraph<_>) node0 = graphToTreeWith id fg.GetNeighbors node0
  
-let rec toVerticesAndEdges parentNode =
-    function
-    | Node n -> [ n ], [ (parentNode, n) ]
-    | Branch(n, branches) ->
-        let g = List.map (toVerticesAndEdges n) branches
-        let ns, es = List.unzip g
-        n :: List.concat ns, (parentNode, n) :: List.concat es
-    | Empty -> [], []
+let toVerticesAndEdges tree =
+    let rec verticesAndEdges parentNode =
+        function
+        | Node n -> [ n ], [ (parentNode, n) ]
+        | Branch(n, branches) ->
+            let g = List.map (verticesAndEdges (Some n)) branches
+            let ns, es = List.unzip g
+            n :: List.concat ns, (parentNode, n) :: List.concat es
+        | Empty -> [], []
+
+    verticesAndEdges None tree
+
     
-let rec toEdges parentNode =
-    function
-    | Node n -> [ (parentNode, n) ]
-    | Branch(n, branches) ->
-        let es = List.map (toEdges n) branches
-        (parentNode, n) :: List.concat es
-    | Empty -> []
+let toEdges tree =
+    let rec edges parentNode =
+        function
+        | Node n -> [ (parentNode, n) ]
+        | Branch(n, branches) ->
+            let es = List.map (edges (Some n)) branches
+            (parentNode, n) :: List.concat es
+        | Empty -> []
+
+    edges None tree
 
 let rec flattenWithShortPathBias =
     function
