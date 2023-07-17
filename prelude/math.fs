@@ -296,9 +296,9 @@ type RandomX() =
     
     static member checkInst() =
         if RandomX._local = null then 
-            let seed = ref 0
-            lock (random) (fun () -> seed := random.Next())
-            RandomX._local <- new Random(!seed)
+            let mutable seed = 0
+            lock (random) (fun () -> seed <- random.Next())
+            RandomX._local <- new Random(seed)
         RandomX._local
     
     static member Next(low, high) =
@@ -462,7 +462,7 @@ module Array =
       
     let inline normalizeWeights (a : ('a * 'b) []) =
         let tot = Array.sumBy snd a
-        Array.map (keepLeft (flip (/) tot)) a
+        Array.map (Pair.applyToRight (flip (/) tot)) a
 
     let inline normalizeWeightsWith (f:'b->'c) (a : ('a * 'b) []) =
         let tot = f (Array.sumBy snd a)

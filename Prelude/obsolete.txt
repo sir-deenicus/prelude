@@ -486,3 +486,13 @@ Final version is reversed.
                 (if found then Some j
                  else None)) (false, i, None)
             |> third
+
+
+
+let inline keepLeft f (x,y) = x , f y
+
+let inline keepRight f (x,y) = f x , y
+
+let inline lessToLeft (a,b) = if a < b then a,b else b,a
+
+let (>>.) f g x = f x; g x

@@ -61,7 +61,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
 
     member g.Edges =
         [|for KeyValue(v1,vs) in g.EdgeData do
-            for v2 in vs -> lessToLeft(v1,v2) |] 
+            for v2 in vs -> Pair.lessToLeft(v1,v2) |] 
         |> Hashset
         |> Seq.toArray
 
@@ -253,7 +253,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         | Some edgelist -> //nodes connected to
             for KeyValue(connectedNode,_) in edgelist do 
                 if dofastweights then
-                    let vertless,vertHigher = lessToLeft(v,connectedNode)
+                    let vertless,vertHigher = Pair.lessToLeft(v,connectedNode)
                     let node = struct (vertless,vertHigher)
                     match edgeWeights.TryFind node with
                     | Some _ -> ignore (edgeWeights.Remove node)
@@ -263,7 +263,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
             edges.Remove v
     
     member g.InsertEdge(v0,v1,w) =
-        let node1,node2 = lessToLeft(v0,v1)
+        let node1,node2 = Pair.lessToLeft(v0,v1)
         if not dofastweights || not(edgeWeights.ContainsKey(struct (node1,node2))) then 
             maybe {
                 let! connectedsToNode1 = edges.TryFind node1
@@ -292,7 +292,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
 
             let _ =
                 if dofastweights then  
-                    let node1,node2 = lessToLeft(v1,v2) 
+                    let node1,node2 = Pair.lessToLeft(v1,v2) 
                     ignore(edgeWeights.Remove (struct (node1,node2)))
             return r
         } 
@@ -300,7 +300,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     member g.ContainsVertex v = edges.ContainsKey v
     
     member g.AdjustWeight (v1,v2, f) =
-        let vertless,vertHigher = lessToLeft(v1,v2)
+        let vertless,vertHigher = Pair.lessToLeft(v1,v2)
         if dofastweights then 
             maybe {       
                 match edgeWeights.TryFind(struct (vertless,vertHigher)) with
@@ -328,7 +328,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     member g.GetEdgeWeight (v1, v2) =  
         maybe {
             if dofastweights then
-                let a,b = lessToLeft(v1,v2)
+                let a,b = Pair.lessToLeft(v1,v2)
                 let! w = edgeWeights.TryFind(struct (a,b))
                 return w 
             else
@@ -397,7 +397,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
     
     member g.Edges = 
         [|for KeyValue(v1,vs) in g.EdgeData do
-            for KeyValue(v2,w) in vs -> lessToLeft (v1,v2), w |]
+            for KeyValue(v2,w) in vs -> Pair.lessToLeft (v1,v2), w |]
         |> Hashset
         |> Seq.toArray 
     
@@ -411,7 +411,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         let sorted = Collections.Generic.SortedSet() 
         for KeyValue(v1,vs) in g.EdgeData do
             for KeyValue(v2,w) in vs do 
-                sorted.Add (WeightedNode(w, lessToLeft(v1,v2)))
+                sorted.Add (WeightedNode(w, Pair.lessToLeft(v1,v2)))
                 |> ignore
         [|for v in sorted -> v.Node, v.Weight|]
     

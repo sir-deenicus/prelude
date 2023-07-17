@@ -183,7 +183,7 @@ module SampleSummarize =
         |> Seq.toArray
         |> Array.map f
         |> Array.groupBy id
-        |> Array.map (keepLeft (Array.length >> float))
+        |> Array.map (Pair.applyToRight (Array.length >> float))
         |> Array.normalizeWeights
 
     let compactMapSamplesAgg aggregator f samples =

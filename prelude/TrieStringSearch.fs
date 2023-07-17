@@ -30,7 +30,7 @@ let autocomplete take (tri:trie<char,'a>) (fragment:string) =
 //Based on http://stevehanov.ca/blog/index.php?id=114
 let search maxCost take tri word = 
     let results = System.Collections.Generic.List<string * int>()//We could fold but each would generate a list and append is O(n)
-    let taken = ref 1
+    let mutable taken = 1
 
     let rec searchRecursive node letter currentWord word (previousRow:int[]) maxCost =  
         let len = String.length word
@@ -47,10 +47,11 @@ let search maxCost take tri word =
 
         // if the last entry in the row indicates the optimal cost is less than the maximum cost, and there is a word in this trie node, then add it.        
         if currentRow.[len] <= maxCost && is_terminal node then
-          incr taken; results.Add(currentWord + string letter, currentRow.[len]) 
+            taken <- taken + 1
+            results.Add(currentWord + string letter, currentRow.[len]) 
 
         // if any entries in the row are less than the maximum cost, then recursively search each branch of the trie
-        if !taken <= take && currentRow |> Array.min <= maxCost then
+        if taken <= take && currentRow |> Array.min <= maxCost then
             for (DictKV(cletter,children)) in node_map node do
                 searchRecursive children cletter (currentWord + string letter) word currentRow maxCost 
    

@@ -129,14 +129,6 @@ module Option =
  
 let inline flip f a b = f b a
 
-let inline keepLeft f (x,y) = x , f y
-
-let inline keepRight f (x,y) = f x , y
-
-let inline lessToLeft (a,b) = if a < b then a,b else b,a
-
-let (>>.) f g x = f x; g x
-
 module Tuple =
     let trimap f (a,b,c) = f a, f b, f c
 
@@ -147,18 +139,34 @@ module Tuple =
 module Pair =
     let ofArray (a:_[]) = a.[0], a.[1]
 
+    let inline lessToLeft (a,b) = if a < b then a,b else b,a
+
+    let applyToLeft f (x,y) = f x, y
+
+    let applyToRight f (x,y) = x, f y
+
     let toArray (a,b) = [|a;b|]
 
+    let ofSeq (a:seq<_>) =
+        Seq.head a, Seq.head (Seq.skip 1 a)
+
+    let toList (a,b) = [a;b]
+
+    ///map a function over both elements of a pair, that is, apply the function to both elements
     let map f (x,y) = (f x, f y)
 
+    ///maps two functions over the pair, one for each element
     let map2 f g (a,b) = f a, g b
 
+    ///given an input `x` and two functions `f` and `g`, apply `f` to `x` and `g` to `x` and return the result as a pair
     let ofTwoFunctions f g x = f x, g x
 
+    ///given two pairs and a function, `op`, applies `op` to the first elements of each pair and the second elements of each pair
     let inline join op (x,y) (u,v) = (op x u, op y v)
 
-    let inline addPairs x y = join (+) x y
+    let inline add x y = join (+) x y
 
+    ///given a function `op` of type `'a -> 'b -> 'c` and a pair `(x,y)`, applies `op` to `x` and `y` and returns the result as a pair
     let inline apply op (x,y) = op x y
 
 //no overhead as far as I can see
@@ -390,8 +398,8 @@ module List =
     let inline sortByDescending f = List.sortBy (fun x -> -1. * float(f x))
     let inline normalizeWeights (l: ('a * 'b) list) =
         let tot = List.sumBy snd l
-        List.map (keepLeft (flip (/) tot)) l
-    let mapRight f sq = sq |> List.map (keepLeft f)
+        List.map (Pair.applyToRight (flip (/) tot)) l
+    let mapRight f sq = sq |> List.map (Pair.applyToRight f)
     let removeDuplicates (xs:_ list) = List.ofSeq (Hashset(xs))
     let nth i (l:'a list) = l.[i]
     let filterMap filter map xs =
@@ -412,6 +420,9 @@ module List =
     
         filter None items 
 
+    let inline takeOrMax n (l: 'a list) =
+        if l.Length <= n then l
+        else List.take n l
     
     let cartesianProduct (l1:_ list) (l2: _ list) =
         [ for a in l1 do
@@ -530,7 +541,7 @@ module Array =
         let take = int (float (array.Length) * p)
         array.[0..take], array.[take + 1..array.Length - 1]
 
-    let mapRight f sq = sq |> Array.map (keepLeft f)
+    let mapRight f sq = sq |> Array.map (Pair.applyToRight f)
 
     let getColJagged col (arr : 'a [] []) =
         [| for row in 0..arr.Length - 1 -> arr.[row].[col] |]
@@ -545,7 +556,9 @@ module Array =
         Array.map List.rev outcol
 
     let subOrMax take (a : 'a []) = a.[..(min (a.Length - 1) take)]
+    
     let takeOrMax n a = subOrMax n a
+
     let filterElseTake filter sortfunc min_n n (a : 'a []) =
         let na = Array.filter filter a
         if na.Length < min_n then subOrMax n (sortfunc a)
@@ -560,25 +573,25 @@ module Array =
     let liftPair (x, y) = [| x; y |]
 
     let mapiFilter mapf filter (vec : 'a []) =
-        let c = ref 0
+        let mutable c = 0
         [| for a in vec do
-               let i = !c
-               incr c
+               let i = c
+               c <- c + 1
                let b = mapf i a
                if filter b then yield b |]
 
     let filteriMap filter mapf (vec : 'a []) =
-        let c = ref 0
+        let mutable c = 0
         [| for a in vec do
-               let i = !c
-               incr c
+               let i = c
+               c <- c + 1
                if filter i a then yield mapf a |]
 
     let filteri filter (vec : 'a []) =
-        let c = ref 0
+        let mutable c = 0
         [| for a in vec do
-               let i = !c
-               incr c
+               let i = c
+               c <- c + 1
                if filter i a then yield a |]
 
     let oddElements a = filteri (fun i _ -> i % 2 <> 0) a
@@ -1090,24 +1103,24 @@ module Seq =
     //           if cond el then incr counter; yield f el}
     ///take first n matches and apply f
     let filterMapTake n cond f (seqs: 'a seq) =
-        let counter = ref 0
+        let mutable counter = 0
         let en = seqs.GetEnumerator()
-        recurse (fun _ -> not(!counter < n && en.MoveNext()))
+        recurse (fun _ -> not(counter < n && en.MoveNext()))
                 (fun curlist ->
                      let el = en.Current
-                     if cond el then
-                       incr counter
+                     if cond el then 
+                       counter <- counter + 1
                        f el::curlist else curlist) []
 
     ///take first n matches after applying f
     let mapFilterTake n f cond (seqs: 'a seq) =
-        let counter = ref 0
+        let mutable counter = 0
         let en = seqs.GetEnumerator()
-        recurse (fun _ -> not(!counter < n && en.MoveNext()))
+        recurse (fun _ -> not(counter < n && en.MoveNext()))
                 (fun curlist ->
                      let el = f en.Current
-                     if cond el then
-                       incr counter
+                     if cond el then 
+                       counter <- counter + 1
                        el::curlist else curlist) []
 
     let filterMap cond f seqs =
@@ -1184,7 +1197,7 @@ module Seq =
                     yield x
         }
 
-    let mapGroupByWith f sq = sq |> Seq.map (keepLeft f)
+    let mapGroupByWith f sq = sq |> Seq.map (Pair.applyToRight f)
 
     let inline sortByDescending f = Seq.sortBy (fun x -> -1. * float (f x))
 
@@ -1225,11 +1238,11 @@ module Seq =
         (List.rev current) :: all |> List.rev
 
     let filteri filter (vec: 'a seq) =
-        let c = ref 0
+        let mutable c = 0
         seq {
             for a in vec do
-                let i = !c
-                incr c
+                let i = c 
+                c <- c + 1
                 if filter i a then yield a
         }
 
@@ -1243,11 +1256,11 @@ module Seq =
         |> snd
 
     let takeOrMax n (seqs: 'a seq) =
-        let counter = ref 0
+        let mutable counter = 0
         let en = seqs.GetEnumerator()
         seq {
-            while !counter < n && en.MoveNext() do
-                incr counter
+            while counter < n && en.MoveNext() do 
+                counter <- counter + 1
                 yield en.Current
         }
          
