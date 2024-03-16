@@ -133,18 +133,18 @@ module Graph =
         let nodes = [|0..n-1|]
 
         for i in 0..n-1 do
-            g.InsertNode(i) |> ignore
+            g.AddNode(i) |> ignore
             // Connect each vertex to its k nearest neighbors on either side
             for j in 1..k/2 do
-                g.InsertEdge(i, (i+j) % n) |> ignore
-                g.InsertEdge(i, (i-j) % n) |> ignore
+                g.AddEdge(i, (i+j) % n) |> ignore
+                g.AddEdge(i, (i-j) % n) |> ignore
         for u, v in g.Edges do
             if random.NextDouble() < p then
                 //we need to choose a new node w that is not u or v
                 let choices = nodes |> Array.filter (fun n -> n <> u && n <> v)
                 let w = Array.sampleOne choices 
                 g.RemoveEdge(u, v) |> ignore
-                g.InsertEdge(u, w) |> ignore
+                g.AddEdge(u, w) |> ignore
                 ()
         g
 
@@ -155,7 +155,7 @@ module Graph =
                 match source.ContainsEdge(a,b) with
                 | Some true -> 
                     target.AddNode a; target.AddNode b
-                    target.InsertEdge(a,b) 
+                    target.AddEdge(a,b) 
                 | _ -> ()
 
     let getMatchingVertices f (g:IGraph<_>) = 
@@ -165,7 +165,7 @@ module Graph =
         for (a,b) as e in es do 
             g.AddNode a
             g.AddNode b
-            g.InsertEdge(e) 
+            g.AddEdge(e) 
 
     let getAncestors n (g: IGraph<_>) =
         let rec loop n = 
@@ -350,7 +350,7 @@ type GraphAlgorithms() =
         | Error NotaDAG -> Error "Not a DAG"
 
     static member removeCycles (g : IGraph<_>, ?reAddEdges) =
-        GraphAlgorithms.removeCyclesAux g.InsertEdge g.RemoveEdge
+        GraphAlgorithms.removeCyclesAux g.AddEdge g.RemoveEdge
             (fun h e -> h.Add e |> ignore) (defaultArg reAddEdges true) g
 
     static member removeCycles (g : IWeightedGraph<_, _>, ?reAddEdges) =

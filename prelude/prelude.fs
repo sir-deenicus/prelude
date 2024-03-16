@@ -1280,10 +1280,11 @@ module Seq =
             for a in s1 do for b in s2 -> a, b        
         }
 
+    let keyValuesToPairs kvs = seq { for KeyValue(k, v) in kvs -> k, v }
+        
     let (|Singleton|) xs =
          if Seq.isEmpty (Seq.tail xs) then Some (Seq.head xs)
          else None
-
 
 ////////////////////////MISC////////////////////////
 
