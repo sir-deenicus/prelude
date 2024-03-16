@@ -119,6 +119,15 @@ module SampleSummarize =
 
         fst (loop 0. [] (List.ofSeq dat |> List.sortBy sortBy))
 
+    let invcummulative sortBy roundTo x dat = 
+        let rec loop gather cumulativeProb =
+            function
+            | [] -> gather
+            | (x', _) :: _ when x' > x -> gather
+            | (x', p) :: dat ->
+                let gather' = (x', p, round roundTo (p + cumulativeProb)) :: gather
+                loop gather' (p + cumulativeProb) dat
+        loop [] 0. (List.ofSeq dat |> List.sortBy sortBy)
 
     let inline getLargeProbItems maxp data =
         let rec innerloop curritems cumulativeprob =
@@ -127,7 +136,7 @@ module SampleSummarize =
             | _ when cumulativeprob > maxp -> curritems
             | ((_, p) as item :: ps) ->
                 innerloop (item :: curritems) (p + cumulativeprob) ps
-        innerloop [] Unchecked.defaultof<'a> (List.sortByDescending snd data)
+        innerloop [] Unchecked.defaultof<'a> (List.sortByDescending snd (List.ofSeq data))
 
     let findTopItem (vc : _ []) =
         let topindex, _ =
@@ -139,21 +148,22 @@ module SampleSummarize =
         topindex, p, [ topitem ]
 
     let getBulk (minp : float) items =
+        let itemsArray = Seq.toArray items
         let rec loopinner cmin cmax bulkMass sum =
-            if sum > minp || (cmin < 0 && cmax >= Array.length items) then
+            if sum > minp || (cmin < 0 && cmax >= Array.length itemsArray) then
                 sum, bulkMass
             else
                 let bulkMass' =
                     let frontpart =
                         if cmin < 0 then bulkMass
-                        else items.[cmin] :: bulkMass
-                    if cmax > items.Length - 1 then frontpart
-                    else items.[cmax] :: frontpart
+                        else itemsArray.[cmin] :: bulkMass
+                    if cmax > itemsArray.Length - 1 then frontpart
+                    else itemsArray.[cmax] :: frontpart
 
                 let currentSum = List.sumBy snd bulkMass'
                 loopinner (cmin - 1) (cmax + 1) bulkMass' currentSum
 
-        let topindex, p, root = findTopItem items
+        let topindex, p, root = findTopItem itemsArray
         loopinner (topindex - 1) (topindex + 1) root p
 
     let getBulkAlternating (minp : float) toggle items =

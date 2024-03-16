@@ -41,44 +41,37 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
         if not contained then edges.Add(v,Hashset())
         contained
 
-    member g.InsertRange(edgesraw) =
+    member g.FromDictionary(edgesraw) =
        edges.Clear()
        edges <- edgesraw
 
+    member g.InsertEdge(v0,v1) = 
+        let elist0 =
+            match edges.TryFind v0 with
+            | Some elist -> elist 
+            | None ->  
+                edges.Add(v0,Hashset())
+                edges[v0]
+        let elist1 =
+            match edges.TryFind v1 with
+            | Some elist -> elist 
+            | None ->  
+                edges.Add(v1,Hashset())
+                edges[v1]
+        let in0 = elist0.Add v1
+        let in1 = elist1.Add v0
+        in0, in1
+  
+            
+    static member fromEdges (tuples:_) =
+        let g = new UndirectedGraph<'a>()
+        g.AddEdges tuples
+        g 
+
     member g.Clear() = edges.Clear()
 
-    member g.AddEdges(edgedata) = 
-        for (v1,v2) in edgedata do
-            let contained = edges.ContainsKey v1
-            if not contained then edges.Add(v1,Hashset())
-            edges[v1].Add(v2) |> ignore
-            let contained = edges.ContainsKey v2
-            if not contained then edges.Add(v2,Hashset())
-            edges[v2].Add(v1) |> ignore
-
-
-    member g.Vertices = [|for KeyValue(k,_) in g.EdgeData -> k|] 
-
-    member g.Edges =
-        [|for KeyValue(v1,vs) in g.EdgeData do
-            for v2 in vs -> Pair.lessToLeft(v1,v2) |] 
-        |> Hashset
-        |> Seq.toArray
-
-    /// <summary>
-    /// Sends a message `msg` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
-    /// </summary>
-    /// <param name="msg">The message to send</param>
-    /// <param name="v">The node to send the message from</param>
-    /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
-    member g.SendMessageToNeighbors (msg:'b, v, f) =
-        let neighbors = g.GetEdges v
-        match neighbors with
-        | None -> ()
-        | Some nodes -> 
-            for node in nodes do
-                let msg', terminate = f msg v node 
-                if terminate then () else g.SendMessageToNeighbors(msg', node, f)
+    member g.AddEdges(edges) =
+        for (v1, v2) in edges do g.InsertEdge(v1, v2) |> ignore
 
     member g.Remove(v: 'a) =
         match (edges.TryFind v) with
@@ -100,15 +93,29 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
             return (in0,in1)
         }
 
-    member g.InsertEdge(v0,v1) =
-        maybe {
-            let! elist0 = edges.TryFind v0
-            let! elist1 = edges.TryFind v1
-            let in0 = elist0.Add v1
-            let in1 = elist1.Add v0
-            return (in0,in1)
-        }
-    
+    member g.Vertices = [|for KeyValue(k,_) in g.EdgeData -> k|] 
+
+    member g.Edges =
+        [|for KeyValue(v1,vs) in g.EdgeData do
+            for v2 in vs -> Pair.lessToLeft(v1,v2) |] 
+        |> Hashset
+        |> Seq.toArray
+
+    /// <summary>
+    /// Sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// </summary>
+    /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToNeighbors (state:'b, v, f) =
+        let neighbors = g.GetEdges v
+        match neighbors with
+        | None -> ()
+        | Some nodes -> 
+            for node in nodes do
+                let msg', terminate = f state (v, node)
+                if terminate then () else g.SendMessageToNeighbors(msg', node, f) 
+     
     member g.ContainsVertex v = edges.ContainsKey v
 
     member g.ContainsEdge (v1,v2) = maybe {
@@ -125,27 +132,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
     member g.NodeNeighborCount v = 
         Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.TryFind v)
 
-    member g.InsertTuples (tuples : _ ) =
-        for (v1, v2) in tuples do
-            match v1 with 
-            | None -> 
-                g.InsertNode v2 |> ignore
-            | Some v1 -> 
-                g.InsertNode v1 |> ignore
-                g.InsertNode v2 |> ignore
-                g.InsertEdge(v1, v2) |> ignore
 
-    static member fromTuples (tuples:_) =
-        let g = new UndirectedGraph<'a>()
-        g.InsertFromTuples tuples
-        g
-
-    member g.InsertFromTuples tuples =
-        for (v1, v2) in tuples do
-            g.InsertNode v1 |> ignore
-            g.InsertNode v2 |> ignore
-            g.InsertEdge(v1, v2) |> ignore
-         
     interface IGraph<'a> with
         member g.Vertices = g.Vertices
         member g.Edges = g.Edges  
@@ -188,21 +175,25 @@ type WeightPair<'a when 'a: comparison> =
 
 //-----------------
 
-[<Struct;CustomComparison;CustomEquality>]
+[<Struct; CustomComparison; CustomEquality>]
 type WeightedNode<'a when 'a: comparison> =
     val Weight: float
-    val Node: 'a    
-    new(w: float,x) =
-        {Weight = w
-         Node = x}    
-    override g.ToString() = (string g.Weight) + ", " + (g.Node.ToString())    
+    val Node: 'a
+    new(w: float, x) = { Weight = w; Node = x }
+
+    override g.ToString() =
+        (string g.Weight) + ", " + (g.Node.ToString())
+
     interface IEquatable<WeightedNode<'a>> with
         member this.Equals(other) =
-            this.Weight = other.Weight && this.Node = other.Node    
+            this.Weight = other.Weight && this.Node = other.Node
+
     interface IComparable<WeightedNode<'a>> with
         member this.CompareTo(other) =
-            if this.Weight = other.Weight then compare this.Node other.Node
-            else this.Weight.CompareTo(other.Weight)
+            if this.Weight = other.Weight then
+                compare this.Node other.Node
+            else
+                this.Weight.CompareTo(other.Weight)
 
 //===================================================
 ///Fastweights is better for lots of look ups and adjusting of weights, otherwise overhead is not worth it.
@@ -279,7 +270,23 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
                             ignore(edgeWeights.ExpandElseAdd (struct (node1,node2), id, w))
                     return true
             }
-        else None
+        else None 
+
+    member g.InsertFromTuples tuples =
+        for (v1,v2,w) in tuples do
+            match v1 with 
+            | None ->
+                g.InsertNode v2 |> ignore
+            | Some v1 ->
+                g.InsertNode v1 |> ignore
+                g.InsertNode v2 |> ignore
+                g.InsertEdge(v1,v2,w) |> ignore
+
+    static member fromTuples tuples =
+        let g = new WeightedGraph<'a>()
+        g.InsertFromTuples tuples
+        g
+
 
     member g.RemoveEdge(v1,v2) =
         maybe {
@@ -370,21 +377,6 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
                 if terminate then () else g.SendMessageToNeighborsAsync (msg', node, f)
         } |> Async.Start 
 
-    member g.InsertFromTuples tuples =
-        for (v1,v2,w) in tuples do
-            match v1 with 
-            | None ->
-                g.InsertNode v2 |> ignore
-            | Some v1 ->
-                g.InsertNode v1 |> ignore
-                g.InsertNode v2 |> ignore
-                g.InsertEdge(v1,v2,w) |> ignore
-
-    static member fromTuples tuples =
-        let g = new WeightedGraph<'a>()
-        g.InsertFromTuples tuples
-        g
-
     member g.ContainsEdge (v1, v2) = maybe {
         let! elist0 = edges.TryFind v1
         return (elist0.ContainsKey v2) }
@@ -401,12 +393,6 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         |> Hashset
         |> Seq.toArray 
     
-    member g.NodeNeighborCounts() = 
-        [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count |] 
-
-    member g.NodeNeighborCount v = 
-        Option.map (fun (vs:Dict<_,_>) -> vs.Count) (edges.TryFind v)
-
     member g.OrderedEdges =
         let sorted = Collections.Generic.SortedSet() 
         for KeyValue(v1,vs) in g.EdgeData do
@@ -415,6 +401,12 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
                 |> ignore
         [|for v in sorted -> v.Node, v.Weight|]
     
+    member g.NodeNeighborCounts() = 
+        [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count |] 
+
+    member g.NodeNeighborCount v = 
+        Option.map (fun (vs:Dict<_,_>) -> vs.Count) (edges.TryFind v)
+
     ///if do max=true it does maximum spanning tree instead
     member g.MinimumSpanningTree(?domax) =
         let dir =
@@ -517,11 +509,11 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>(?fastweights) =
         member g.GetRawEdges v = g.GetEdgesRaw v  
         member g.IsWeightNormalized = weightnormalized
         member g.HasCycles = None
-        member g.Ins _ = failwith "No a directed graph"
+        member g.Ins _ = failwith "Not a directed graph"
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.ApplyToEdges f = g.ForEachEdge f
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v) |> ignore
-        member g.RemoveEdge(u,v,clean) = failwith "No a directed graph"
+        member g.RemoveEdge(u,v,clean) = failwith "Not a directed graph"
         member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.InsertEdge(_,_)= failwith "Need weight"
         member g.ContainsEdge(u,v) = g.ContainsEdge(u,v) 

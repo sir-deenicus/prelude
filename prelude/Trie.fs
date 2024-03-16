@@ -29,7 +29,7 @@ let is_terminal n =
 let is_empty tn = Map.isEmpty (node_map tn)
 let empty_trie  = TNode (None, Map.empty)
 
-let find_subtrie tn k =
+let find_subtrie k tn =
  try
   Map.find k (node_map tn)
  with
@@ -44,7 +44,7 @@ let add m tn ks v =
    TNode (Some v, (node_map tn'))
   else
    let k = (m.head ks') in
-    TNode (node_value tn', Map.add k (upd (find_subtrie tn' k) (m.tail ks')) (node_map tn'))
+    TNode (node_value tn', Map.add k (upd (find_subtrie k tn') (m.tail ks')) (node_map tn'))
  in
   upd tn ks
 
@@ -55,7 +55,7 @@ let lookup m tn ks =
    node_value tn'
   else
    let k = (m.head ks') in
-    lv (find_subtrie tn' k) (m.tail ks')
+    lv (find_subtrie k tn') (m.tail ks')
  in
   lv tn ks
 
@@ -68,7 +68,7 @@ let mem m tn ks =
 (* produces the dot/graphviz description of a trie *)
 let graphviz ovstr kstr tn =
  let rec nodes p tn' =
-  let scs k = nodes (p + "_" + (kstr k)) (find_subtrie tn' k) in
+  let scs k = nodes (p + "_" + (kstr k)) (find_subtrie k tn') in
    let nshape = if is_terminal tn' then "circle" else "point" in
    (" " + p + " [shape=\"" + nshape + "\" label=\"" + (ovstr (node_value tn')) + "\"];\n") +
    (String.concat "" (List.map scs (path_heads tn')))
@@ -77,7 +77,7 @@ let graphviz ovstr kstr tn =
   let
    scs k =
     let sn = p + "_" + (kstr k) in
-    (" " + p + " -> " + sn + " [ label = \"" + (kstr k) + "\"];\n") + (connections sn (find_subtrie tn' k))
+    (" " + p + " -> " + sn + " [ label = \"" + (kstr k) + "\"];\n") + (connections sn (find_subtrie k tn'))
   in
    String.concat "" (List.map scs (path_heads tn'))
  in

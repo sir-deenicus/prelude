@@ -31,6 +31,7 @@ module Stats =
           N : int
           Min : float
           Max : float
+          Range : float
           Median : float }
 
     type SimpleStatsInfo =
@@ -164,12 +165,15 @@ module Stats =
         alpha * y + (1. - alpha) * eavg
 
     let summaryStats (x : float seq) =
+        let minval = Seq.min x
+        let maxval = Seq.max x
         { Sum = Seq.sum x
           Mean = Seq.average x
           Stddev = stddev x
           N = Seq.length x
-          Min = Seq.min x
-          Max = Seq.max x
+          Min = minval
+          Max = maxval
+          Range = maxval - minval
           Median = median (Seq.toArray x) }
 
     let distCovariance equal (v1 : float []) (v2 : float []) =

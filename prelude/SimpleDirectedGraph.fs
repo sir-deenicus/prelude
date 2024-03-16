@@ -249,6 +249,8 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
         g.Vertices 
         |> Array.map (fun v -> g.ExtractShortestPath (id, paths, v))
 
+    member g.ShortestPath  (source, target) = g.ExtractShortestPath (fst, g.DijkstrasShortestPath(source, target),target)
+
     member g.InsertFromTuples (tuples : _ ) =
         for (v1, v2, w) in tuples do
             match v1 with 
@@ -321,9 +323,7 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
         member g.RemoveEdge(u,v,clearIsolatedNodes) = 
             g.RemoveEdge(u,v, clearIsolatedNodes) |> ignore
-
-
-
+ 
 ///Can have any edge type. The compressed directed graph uses an index in place of the node string to save memory. You pass in a
 ///'keytype to represent this index type. The reason for this is to support scenarios where you know the size limit and can 
 ///thus use a byte or uint16 instead of a uint32 type. An example use case I have in mind is generating hundreds of markov chains with only a 20 word vocabulary. 

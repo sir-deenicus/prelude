@@ -427,6 +427,10 @@ module List =
     let cartesianProduct (l1:_ list) (l2: _ list) =
         [ for a in l1 do
             for b in l2 -> a,b]
+             
+type System.Collections.Generic.List<'a> with
+  member self.GetReverseIndex(i, offset) = 
+    self.Count - offset - 1
 
 type 'a ``[]`` with
   member self.LastElement = self.[self.Length - 1]
@@ -511,6 +515,10 @@ module Array =
 
     let takeAtPercent p (a : 'a []) =
         let len = float a.Length in a.[..max 0 (int (round 0 (p * len)) - 1)]
+    
+    let takeFromPercent p (a:_[]) =
+        let i = int (float a.Length * p)
+        a[i..]
 
     let mapFilter f cond (seqs : 'a []) =
         [| for el in seqs do
@@ -757,6 +765,8 @@ module String =
            "--" |]
 
     let inline trim (str : string) = str.Trim()
+
+    let takeOrMax n (s:string) = if s.Length > n then s.Substring(0, n) else s
 
     ///trims with passed array, variable superflouschars provides: ' '; ','; '.'; '\"' ; '(' ; ')'; ':'; ';'; '*'; '+'; '-' ; '\''; '”'; '{';'}'; '['; ']'
     let trimWith (charsToTrim : _ []) (s : string) = s.Trim(charsToTrim)

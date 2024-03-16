@@ -179,13 +179,13 @@ module Graph =
 
     //the first part of parsing the graph is to get the nodes
 
-    let getNodeName (nodenames: IDict<string, string>) node =
+    let private getNodeName (nodenames: IDict<string, string>) node =
         if nodenames.ContainsKey node then
             nodenames.[node]
         else
             node
 
-    let getRawNodeParts (node: string) =
+    let private getRawNodeParts (node: string) =
         let parts = node.Splitby("[")
 
         if parts.Length > 1 then
@@ -193,7 +193,7 @@ module Graph =
         else
             parts.[0].Trim()
 
-    let mermaidTxtLines (mgraphtxt: string) =
+    let private mermaidTxtLines (mgraphtxt: string) =
         mgraphtxt.Trim().Splitby("\n")
         |> Array.filter (String.contains "flowchart LR" >> not)
 

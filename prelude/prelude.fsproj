@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.1;net5</TargetFrameworks>
-    <LangVersion>preview</LangVersion>
+    <LangVersion>preview</LangVersion> 
     <Company />
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions.</Description>
-    <Version>1.9.9</Version>
+    <Version>2.0.2</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
@@ -43,7 +43,9 @@
   <ItemGroup>
     <PackageReference Include="DictionarySlim" Version="1.0.0" />
   </ItemGroup>
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="copy &quot;C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\Prelude.*.nupkg&quot; &quot;C:\Users\cybernetic\Code\Packages\&quot;&#xD;&#xA;&#xD;&#xA;del &quot;C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\Prelude.*.nupkg&quot;" />
-  </Target>
+  <Target Name="PostBuild" AfterTargets="Pack">
+    <Exec Command="dotnet nuget push &quot;$(MSBuildProjectDirectory)\bin\Release\prelude.*.nupkg&quot; --source &quot;https://nuget.pkg.github.com/sir-deenicus/index.json&quot; --skip-duplicate --api-key $(GITHUB_PAT)" ContinueOnError="true" />
+    <Exec Command="copy &quot;$(MSBuildProjectDirectory)\bin\Release\Prelude.*.nupkg&quot; &quot;C:\Users\cybernetic\Code\Packages\&quot;&#xD;&#xA;&#xD;&#xA;del &quot;C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\Prelude.*.nupkg&quot;" />
+  </Target> 
 </Project>
+
