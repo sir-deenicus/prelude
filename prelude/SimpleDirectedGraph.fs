@@ -5,34 +5,30 @@ open System
 open Prelude.Collections.FibonacciHeap
 open Prelude.SimpleGraphs
 open DictionarySlim
-
-///Fastweights is better for lots of look ups and adjusting of weights, otherwise overhead is not worth it.
-type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweights) =
+ 
+type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>() =
     let mutable edges = Dict<'a,Dict<'a, float>>()
-    let mutable edgeWeights = 
-        Dict<struct ('a * 'a), float>(HashIdentity.Structural)
-    let fast_weights = defaultArg fastweights false
-    let mutable weightnormalized = false
     let mutable cyclic = None
 
-    member g.WeightNormalized 
-        with get() = weightnormalized 
-        and set wn = weightnormalized <- wn
+    let mutable weightnormalized = false
 
+    member g.WeightNormalized
+        with get () = weightnormalized
+        and set wn = weightnormalized <- wn
+ 
     member g.IsCyclic   
         with get() = cyclic 
         and set c = cyclic <- c
 
     member __.Clear() =
-        edges.Clear()
-        edgeWeights.Clear()
+        edges.Clear() 
 
     member g.EdgeData = edges
 
     member g.ForEachEdge f =
         for (v, vs) in keyValueSeqtoPairArray edges do
             for (v2, w) in keyValueSeqtoPairArray vs do
-                edges.[v].[v2] <- f w
+                edges[v][v2] <- f w
 
     member g.RemoveVerticesWhere f =
         let keys = g.Vertices
@@ -45,14 +41,18 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
             for (v2, w) in keyValueSeqtoPairArray vs do
                 if f ((v,v2),w) then g.RemoveEdge(v,v2) |> ignore
 
-    member g.InsertRange(edgesRaw,?edgeweights) =
+    member g.FromDictionary(edgesDict) =
         edges.Clear()
-        edges <- edgesRaw
-        edgeWeights.Clear()
-        if edgeweights.IsSome then
-           edgeWeights <- edgeweights.Value
+        edges <- edgesDict 
 
-    member g.InsertNode(s : 'a) =
+    member g.FromDictionary(edgeWeightsDict) =
+        edges.Clear()   
+        for KeyValue(struct(v1,v2),w) in edgeWeightsDict do
+            match edges.TryFind v1 with
+            | Some vs -> vs.Add(v2, w) |> ignore
+            | None -> edges.Add(v1, Dict.ofSeq [v2, w]) |> ignore 
+
+    member g.AddNode(s : 'a) =
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s, Dict())
         contained
@@ -64,14 +64,26 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToChildren (msg:'b, v, f) =
-        let neighbors = g.GetEdges v
-        match neighbors with
-        | None -> ()
-        | Some nodes -> 
-            for (node, weight) in nodes do
-                let msg', terminate = f msg v node weight
-                if terminate then () else g.SendMessageToChildren(msg', node, f)
-
+        let neighbors = g.GetEdges v 
+        for (node, weight) in neighbors do
+            let msg', terminate = f msg (v, node, weight)
+            if terminate then () else g.SendMessageToChildren(msg', node, f)
+    
+    /// <summary>
+    /// Asynchronously sends a state `state` to child nodes of node "v" via f, which takes a state, the current node, edge weight and the current targeted node and returns a new state and a boolean indicating whether to terminate the state passing.
+    /// </summary>
+    /// <param name="state">The state to send</param>
+    /// <param name="v">The node to send the state from</param>
+    /// <param name="f">The function to apply to the state, f takes a state, the current node, edge weight and the current targeted node and returns a new state and a boolean indicating whether to terminate the state passing.</param>
+    member g.SendMessageToChildrenAsync (state:'b, v, f) = 
+        async {
+            let neighbors = g.GetEdges v 
+            for (node, weight) in neighbors do
+                let! state', terminate = async { return f state (v, node, weight) }
+                if terminate then () 
+                else do! g.SendMessageToChildrenAsync(state', node, f)
+        }
+        
     /// <summary>
     /// Sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
     /// </summary>
@@ -81,139 +93,167 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
     member g.SendMessageToParents (msg:'b, v, f) =
         let nodes = g.InEdgesWeights v 
         for ((node,_), weight) in nodes do
-            let msg', terminate = f msg v node weight
+            let msg', terminate = f msg (v, node, weight)
             if terminate then () else g.SendMessageToParents(msg', node, f)
-    
+
     /// <summary>
-    /// Sends a message `msg` to neighbor nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
-    member g.SendMessageToNeighbors (msg:'b, v, f) =
-        let nodes = 
-            match g.GetEdges v with
-            | Some nodes -> Array.append nodes [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-            | None -> [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
+    member g.SendMessageToParentsAsync (msg:'b, v, f) =
+        async {
+            let nodes = g.InEdgesWeights v 
+            for ((node,_), weight) in nodes do
+                let! msg', terminate = async { return f msg (v, node, weight) }
+                if terminate then () 
+                else do! g.SendMessageToParentsAsync(msg', node, f)
+        }
+    
+    /// <summary>
+    /// Sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// </summary>
+    /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToNeighbors (state:'b, v, f) =
+        let nodes =  
+            Array.append (g.GetEdges v) [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
+            
         for (node, weight) in nodes do
-            let msg', terminate = f msg v node weight
+            let msg', terminate = f state (v, node, weight)
             if terminate then () else g.SendMessageToNeighbors(msg', node, f)    
     
+    /// <summary>
+    /// Asynchronously sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// </summary>
+    /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToNeighborsAsync (state:'b, v, f) =
+        async {
+            let nodes =  
+                Array.append (g.GetEdges v) [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
+                
+            for (node, weight) in nodes do
+                let! msg', terminate = async { return f state (v, node, weight) }
+                if terminate then () 
+                else do! g.SendMessageToNeighborsAsync (msg', node, f)
+        }
+
+
     member g.InEdgesWeights v =
-        if fast_weights then
-            [| for (KeyValue(struct (a, b), w)) in edgeWeights do
-                   if b = v then yield ((a, b), w) |]
-        else [|for KeyValue(a, vs) in edges do
-                let w = match g.GetEdgeWeight(a, v) with Some w -> w | None -> failwith "no weight"
-                if vs.ContainsKey v then yield ((a, v), w) |]
+        [| for KeyValue(a, vs) in edges do
+               let w =
+                   match g.GetEdgeWeight(a, v) with
+                   | Some w -> w
+                   | None -> failwith "no weight" //should not happen
+
+               if vs.ContainsKey v then
+                   yield ((a, v), w) |]
 
     member g.Ins v = 
         [|for KeyValue(a, vs) in edges do
             if vs.ContainsKey v then yield a |]
 
-    member g.InEdges v =
-        if fast_weights then
-            [| for (KeyValue(struct (a, b), _)) in edgeWeights do
-                   if b = v then yield (a, b) |]
-        else 
-            [|for KeyValue(a, vs) in edges do
-                if vs.ContainsKey v then yield (a, v) |]
+    member g.InEdges v = 
+        [|for KeyValue(a, vs) in edges do
+            if vs.ContainsKey v then yield (a, v) |]
  
     member g.Remove(v : 'a) =
-        match (edges.TryFind v) with
+        match edges.TryFind v with
         | None -> false
-        | Some edgelist ->
-            if fast_weights then 
-                for KeyValue(connectedNode,_) in edgelist do 
-                    let node = struct (v,connectedNode)
-                    match edgeWeights.TryFind node with
-                    | Some _ -> ignore (edgeWeights.Remove node)
-                    | _ -> ()  
-     
+        | Some _ ->
             let removes = g.InEdges v 
             for (a,b) in removes do //all a's pointing into v=b
-                edges.[a].Remove b |> ignore
-                if fast_weights then
-                    let n = struct (a,b)
-                    edgeWeights.Remove(n) |> ignore
+                edges[a].Remove b |> ignore  
+
             edges.Remove v 
+    
+    /// <summary>
+    /// Adds an edge between two nodes in the graph.
+    /// </summary>
+    /// <param name="node1">The node where the edge starts.</param>
+    /// <param name="node2">The node where the edge ends.</param>
+    /// <param name="w">The weight of the edge.</param>
+    /// <param name="overwriteWeight">Optional parameter. If true (or not provided), the weight of the edge will be overwritten if the edge already exists. If false, the weight of the edge will not be overwritten.</param>
+    /// <returns>Returns true if the edge was successfully added or updated, false otherwise.</returns>
+    member g.AddEdge(node1,node2,w,?overwriteWeight) =
+        let overwrite = defaultArg overwriteWeight true 
+        if not (edges.ContainsKey node1) then 
+            edges.Add(node1, Dict())
+         
+        let connectedsToNode1 = edges[node1]
+        
+        if not (connectedsToNode1.ContainsKey node2) then 
+            connectedsToNode1.Add(node2, w) 
+        else 
+            if overwrite then 
+                connectedsToNode1[node2] <- w   
 
-    member g.InsertEdge(node1,node2,w) = 
-        if not fast_weights || not(edgeWeights.ContainsKey(struct (node1,node2))) then 
-            maybe {
-                let! connectedsToNode1 = edges.TryFind node1
-                if connectedsToNode1.ContainsKey node2 then 
-                   return false
-                else
-                    connectedsToNode1.Add(node2, w)
-                
-                    let _ =
-                        if fast_weights then 
-                            ignore(edgeWeights.ExpandElseAdd(struct (node1,node2), id, w))
-                    return true
-            }
-        else None
-
-    member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
+    member g.RemoveEdge(v1, v2, ?clearIsolatedNodes) =
         let docleanup = defaultArg clearIsolatedNodes true
         maybe {
             let! connectedToNode1 = edges.TryFind v1
             let r = connectedToNode1.Remove(v2)
 
             let _ =
-                if docleanup && connectedToNode1.Count = 0
-                    && Array.isEmpty (g.InEdges v1) then edges.Remove v1 |> ignore
+                if docleanup && connectedToNode1.Count = 0 && Array.isEmpty (g.InEdges v1) then
+                    edges.Remove v1 |> ignore
 
-            let _ =
-                if fast_weights then
-                    let node = struct (v1, v2)
-                    ignore (edgeWeights.Remove(node))
             return r
         } 
 
+    member g.ClearIsolatedNodes() = 
+        for KeyValue(v, _) in edges do
+            let haschildren = 
+                match edges.TryFind v with
+                | Some vs -> vs.Count > 0
+                | _ -> false
+
+            if Array.isEmpty (g.Ins v) && not haschildren then 
+                g.Remove v |> ignore
+
+    member g.HasChildren v = 
+        match edges.TryFind v with
+        | Some vs -> vs.Count > 0
+        | _ -> false
+
     member g.ContainsVertex v = edges.ContainsKey v
 
-    member g.AdjustWeight (v1,v2, f) =
-        if fast_weights then 
-            maybe {       
-                match edgeWeights.TryFind(struct (v1,v2)) with
-                | Some w -> 
-                    edgeWeights.[struct (v1,v2)] <- f w
-                    return true
-                | None -> return! g.InsertEdge(v1,v2,f 0.)   
-            }
-        else  
-            match edges.TryFind v1 with
-            | Some elistV1 -> 
-                match elistV1.TryFind v2 with 
-                | Some w ->
-                    elistV1.[v2] <- f w 
-                    Some true
-                | None -> g.InsertEdge(v1,v2, f 0.) 
-            | None -> Some (false) 
+    member g.AdjustWeight (v1,v2, f) = 
+        match edges.TryFind v1 with
+        | Some outgoingEdges -> 
+            match outgoingEdges.TryFind v2 with 
+            | Some w ->
+                outgoingEdges[v2] <- f w 
+                Some true
+            | None -> Some false
+        | None -> Some (false) 
 
-    member __.EdgeWeights = edgeWeights
+    member __.EdgeWeights =
+        [| for KeyValue(v1, vs) in edges do
+            for KeyValue(v2, w) in vs do
+                v1, v2, w |]
 
     member g.GetEdgeWeight (v1, v2) =  
-        maybe {
-            if fast_weights then
-                let! w = edgeWeights.TryFind(struct (v1,v2))
-                return w 
-            else
-                let! vs = edges.TryFind v1
-                let! w = vs.TryFind v2
-                return w
+        maybe { 
+            let! vs = edges.TryFind v1
+            let! w = vs.TryFind v2
+            return w
         } 
 
-    member g.ContainsEdge (v1, v2) = maybe { 
-        let! elist0 = edges.TryFind v1
-        return (elist0.ContainsKey v2) }
+    member g.ContainsEdge(v1, v2) =
+        maybe {
+            let! outgoingEdges = edges.TryFind v1
+            return (outgoingEdges.ContainsKey v2)
+        }
 
-    member g.GetEdgesRaw v = maybe { 
-        let! elist = edges.TryFind v
-        return elist }
-
-    member g.GetEdges v = Option.map keyValueSeqtoPairArray (g.GetEdgesRaw v)
+    member g.GetEdges v =
+        [| match edges.TryFind v with
+            | Some vs -> yield! keyValueSeqtoPairArray vs
+            | _ -> () |]    
     
     member g.NodeNeighborCounts() = 
         [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count|]  
@@ -249,21 +289,15 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
         g.Vertices 
         |> Array.map (fun v -> g.ExtractShortestPath (id, paths, v))
 
-    member g.ShortestPath  (source, target) = g.ExtractShortestPath (fst, g.DijkstrasShortestPath(source, target),target)
+    member g.ShortestPath(source, target) = g.ExtractShortestPath (fst, g.DijkstrasShortestPath(source, target),target)
 
-    member g.InsertFromTuples (tuples : _ ) =
-        for (v1, v2, w) in tuples do
-            match v1 with 
-            | Some v1 ->
-                g.InsertNode v1 |> ignore
-                g.InsertNode v2 |> ignore
-                g.InsertEdge(v1, v2, w) |> ignore
-            | None -> 
-                g.InsertNode v2 |> ignore
+    member g.AddEdges (edges : _ ) =
+        for (v1, v2, w) in edges do 
+            g.AddEdge(v1, v2, w) |> ignore 
 
-    static member fromTuples (tuples:_) =
+    static member fromEdges (edges:_) =
         let g = new WeightedDirectedGraph<'a>()
-        g.InsertFromTuples tuples
+        g.AddEdges edges
         g
         
     member g.DijkstrasShortestPath(source, ?target) =
@@ -282,19 +316,16 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
             let next = FibHeap.extract_min_data q
             if target.IsSome && next = target.Value then true
             else
-                let adjs = g.GetEdgesRaw next
-                let _ = visited.Add next
-                match adjs with
-                | None -> false
-                | Some vs ->
-                    for KeyValue(node2,weight) in vs do
-                        if not (visited.Contains node2) then
-                            let alt = dists.[next] + weight
-                            if alt < dists.[node2] then
-                                dists.[node2] <- alt
-                                prev.[node2] <- Some next
-                                FibHeap.decrease_key q nodeMap.[node2] alt
-                    false) (false)
+                let nextEdges = g.GetEdges next
+                let _ = visited.Add next 
+                for (node2,weight) in nextEdges do
+                    if not (visited.Contains node2) then
+                        let alt = dists.[next] + weight
+                        if alt < dists.[node2] then
+                            dists.[node2] <- alt
+                            prev.[node2] <- Some next
+                            FibHeap.decrease_key q nodeMap.[node2] alt
+                false) (false)
         |> ignore
         dists, prev
 
@@ -303,22 +334,23 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>(?fastweigh
         member g.Edges = Array.map fst g.Edges
         member g.WeightedEdges = g.Edges 
         member g.Ins v = g.Ins v
-        member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
+        member g.GetNeighbors n = g.GetEdges n |> Array.map fst
         member g.GetWeightedEdges n = g.GetEdges n
-        member g.AddNode v = g.InsertNode v |> ignore
+        member g.AddNode v = g.AddNode v |> ignore
         member g.RemoveNode v = g.Remove v |> ignore
-        member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
+        member g.AddWeightedEdge ((v1, v2, w)) = g.AddEdge(v1, v2, w) |> ignore
+        member g.AddWeightedEdges edges = g.AddEdges edges
+        member g.AddEdges _ = failwith "Need weights"
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.RawEdgeData() = Dict.ofSeq [|for KeyValue(k,v) in g.EdgeData -> k, Hashset(v.Keys)|]  
-        member g.RawEdgeWeightData() = g.EdgeData 
-        member g.GetRawEdges v = g.GetEdgesRaw v   
+        member g.RawEdgeWeightData() = Choice1Of2 g.EdgeData   
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.ApplyToEdges f = g.ForEachEdge f 
         member g.IsDirected = true 
         member g.IsWeightNormalized = weightnormalized
         member g.HasCycles = cyclic 
-        member g.InsertEdge(_,_)= failwith "Need weight" 
+        member g.AddEdge(_,_)= failwith "Need weight" 
         member g.ContainsEdge(u,v) = g.ContainsEdge(u,v)
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
         member g.RemoveEdge(u,v,clearIsolatedNodes) = 
@@ -353,12 +385,17 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
 
     member g.InEdgesCached = maintainInEdges
 
-    member __.GraphData(simplifyWeights) = 
-        ([|for (node1, nodes) in keyValueSeqtoPairArray edges ->
-                node1, 
-                [| for (node2, w) in keyValueSeqtoPairArray nodes -> node2, simplifyWeights w|]|],
-          keyValueSeqtoPairArray vertices), 
-        [|for (node1, nodes) in keyValueSeqtoPairArray inedges -> node1, nodes|]
+    member __.GraphData(weightsfn) =
+        let edgeData =
+            [| for (node1, nodes) in keyValueSeqtoPairArray edges ->
+                node1, [| for (node2, w) in keyValueSeqtoPairArray nodes -> node2, weightsfn w |] |]
+
+        let vertexData = keyValueSeqtoPairArray vertices
+
+        let inEdgeData =
+            [| for (node1, nodes) in keyValueSeqtoPairArray inedges -> node1, nodes |]
+
+        (edgeData, vertexData), inEdgeData
 
     member g.RebuildInEdges () =
         let getInEdges v =
@@ -373,7 +410,7 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
             let ins = &inedges.GetOrAddValueRef v
             ins <- getInEdges v
 
-    member g.InsertRange(reprocessWeights, ((es, vs), inEdges)) =
+    member g.FromState(reprocessWeights, ((es, vs), inEdges)) =
         edges.Clear()
         vertices.Clear() 
         inedges.Clear()  
@@ -394,21 +431,22 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
 
         g.ComputeReverseIndex() 
         
-        match Array.isEmpty inEdges with
-        | true -> g.RebuildInEdges()
-        | false ->
-            for (i,vs) in inEdges do
-                let inset = Hashset<'keytype>()
-                for k in vs do 
-                    inset.Add k |> ignore 
-                let ins = &inedges.GetOrAddValueRef i
-                ins <- inset
+        if maintainInEdges then 
+            match Array.isEmpty inEdges with
+            | true -> g.RebuildInEdges()
+            | false ->
+                for (i,vs) in inEdges do
+                    let inset = Hashset<'keytype>()
+                    for k in vs do 
+                        inset.Add k |> ignore 
+                    let ins = &inedges.GetOrAddValueRef i
+                    ins <- inset
 
     member __.Clear() =
         edges.Clear()
         vertices.Clear()
         rev_vertices.Clear()
-        inedges.Clear()
+        inedges.Clear() 
 
     member g.ComputeReverseIndex() =
         rev_vertices.Clear()
@@ -416,7 +454,7 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
             let item = &rev_vertices.GetOrAddValueRef index
             item <- key
 
-    member g.InsertVertex(s : 'a) =
+    member g.AddNode(s : 'a) =
         let contained = vertices.ContainsKey s
         if not contained then
             let count = keytype vertices.Count
@@ -443,23 +481,35 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
                     if es.ContainsKey i then  
                         es.Remove i |> ignore 
             edges.Remove i
-        else false
+        else false 
+    
+    member g.ClearIsolatedNodes() = 
+        for KeyValue(v, i) in vertices do
+            let _, es = edges.TryGetValue i
+            if not (g.HasParent v) && es.Count = 0 then 
+                g.Remove v |> ignore 
 
-    member g.InsertEdge(v0, v1, w) =
-        let has1, i = vertices.TryGetValue v0
-        if has1 then
-            let has2, i2 = vertices.TryGetValue v1
-            if has2 then
-                let _, es = edges.TryGetValue i
-                let w0 = &es.GetOrAddValueRef i2 
-                w0 <- w 
-                
-                if maintainInEdges then
-                    let _, ins = inedges.TryGetValue i2
-                    ins.Add i |> ignore
-                true
-            else false
-        else false
+    member g.AddEdge(v0, v1, w) =  
+        if not (vertices.ContainsKey v0) then 
+            g.AddNode(v0) |> ignore
+         
+        if not (vertices.ContainsKey v1) then 
+            g.AddNode v1 |> ignore
+
+        let _, i = vertices.TryGetValue v0
+        let _, i2 = vertices.TryGetValue v1
+
+        let _, es = edges.TryGetValue i
+        let w0 = &es.GetOrAddValueRef i2 
+        w0 <- w 
+        
+        if maintainInEdges then
+            let _, ins = inedges.TryGetValue i2
+            ins.Add i |> ignore
+        true 
+
+    member g.AddEdges (edges: _ seq) = 
+        for edge in edges do g.AddEdge edge |> ignore
          
     member g.RemoveEdge(v0, v1, ?clearIsolatedNodes) =
         let has1, i = vertices.TryGetValue v0
@@ -518,13 +568,11 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
         let hasv, i = vertices.TryGetValue v
         if hasv then
             let _, es = edges.TryGetValue i
-            Some
-                [| for (KeyValue(k, w)) in es ->
-                    rev_vertices.TryGetValue k |> snd, w |]
-        else None
-
-    member g.GetEdgesRaw v = Option.map Dict.ofSeq (g.GetEdges v)
-
+             
+            [| for (KeyValue(k, w)) in es ->
+                rev_vertices.TryGetValue k |> snd, w |]
+        else Array.empty
+    
     member g.Ins v =
         let hasv, i = vertices.TryGetValue v
         if hasv then
@@ -535,19 +583,31 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
                 [| for (KeyValue(a, es)) in edges do
                     if es.ContainsKey i then
                         yield (snd (rev_vertices.TryGetValue a)) |] 
-        else Array.empty
+        else Array.empty 
 
-    member g.Edges =
-        [|for KeyValue(node1,nodes) in g.EdgeData do
-            for KeyValue(node2, w) in nodes ->
-                (rev_vertices.TryGetValue node1 |> snd,
-                 rev_vertices.TryGetValue node2 |> snd), w|]
-    
+    member g.HasParent v = 
+        let hasv, i = vertices.TryGetValue v
+        if hasv then
+            if maintainInEdges then
+                let _, es = inedges.TryGetValue i
+                es.Count > 0
+            else 
+                edges 
+                |> Seq.exists (fun (KeyValue(_, es)) -> es.ContainsKey i)
+
+        else false
+
     member g.ForEachEdge(f) = 
         for KeyValue(_,nodes) in edges do
             for KeyValue(node2,_) in nodes do
                 let w = &nodes.GetOrAddValueRef node2
                 w <- f w
+
+    member g.Edges =
+        [|for KeyValue(node1,nodes) in g.EdgeData do
+            for KeyValue(node2, w) in nodes ->
+                (rev_vertices.TryGetValue node1 |> snd,
+                 rev_vertices.TryGetValue node2 |> snd), w|] 
 
     member g.NodeNeighborCounts() = 
         [|for KeyValue(node1,nodes) in g.EdgeData ->
@@ -571,20 +631,20 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
         member g.Vertices = g.Vertices
         member g.Edges = Array.map fst g.Edges
         member g.WeightedEdges = g.Edges
-        member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
+        member g.GetNeighbors n = g.GetEdges n |> Array.map fst
         member g.GetWeightedEdges n = g.GetEdges n
-        member g.AddNode v = g.InsertVertex v |> ignore
-
+        member g.AddNode v = g.AddNode v |> ignore
+        member g.AddWeightedEdges edges = g.AddEdges edges
+        member g.AddEdges _ = failwith "Need weights"
         member g.RemoveNode v = g.Remove v |> ignore
-        member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
+        member g.AddWeightedEdge e = g.AddEdge e |> ignore
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.Ins v = g.Ins v
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
-        member g.IsWeightNormalized = weightnormalized
-        member g.GetRawEdges v = g.GetEdgesRaw v
+        member g.IsWeightNormalized = weightnormalized 
         member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.ApplyToEdges f = g.ForEachEdge f 
-        member g.InsertEdge(_,_)= failwith "Need weight" 
+        member g.AddEdge(_,_) = failwith "Need weight" 
         member g.ContainsEdge(u,v) = g.ContainsEdge(u,v)
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
         member g.RemoveEdge(u,v,clearIsolatedNodes) = 
@@ -601,6 +661,7 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
                 [| for KeyValue(k, v) in g.EdgeData ->
                     g.RevLookUp k,
                     Dict.ofSeq [| for KeyValue(k, w) in v -> g.RevLookUp k, w |] |]
+            |> Choice1Of2
 
 
 type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
@@ -618,11 +679,26 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
 
     member g.EdgeData = edges
 
-    member g.InsertRange es =
+    member g.FromDictionary es =
         edges.Clear()
         edges <- es
 
     member __.Clear() = edges.Clear()
+
+    member g.ClearIsolatedNodes() = 
+        for KeyValue(v, _) in edges do
+            let haschildren = 
+                match edges.TryFind v with
+                | Some vs -> vs.Count > 0
+                | _ -> false
+
+            if Array.isEmpty (g.Ins v) && not haschildren then 
+                g.Remove v |> ignore
+
+    member g.HasChildren v =
+        match edges.TryFind v with
+        | Some vs -> vs.Count > 0
+        | _ -> false
 
     member g.ForEachEdge f =
         for (v, vs) in keyValueSeqtoPairArray edges do
@@ -652,10 +728,27 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
             return r
         } 
 
-    member g.InsertNode(s : 'a) =
+    member g.AddNode(s : 'a) =
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s, Dict())
         contained
+ 
+    member g.AddEdge(v0, v1, w, ?overwrite) = 
+        let shouldOverwrite = defaultArg overwrite true
+
+        if not (edges.ContainsKey v0) then
+            edges.Add(v0, Dict())
+
+        edges[v0].ExpandElseAdd(v1, (fun w0 -> if shouldOverwrite then w else w0), w)
+ 
+
+    member g.AddEdges(edges) = 
+        for (v1, v2, w)  in edges do g.AddEdge(v1, v2, w) 
+
+    static member fromEdges (edges) =
+        let g = new GeneralDirectedGraph<'a,'b>()
+        g.AddEdges edges
+        g
 
     /// <summary>
     /// Sends a message `msg` to child nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
@@ -664,13 +757,10 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToChildren(msg:'b, v, f) =
-        let neighbors = g.GetEdges v
-        match neighbors with
-        | None -> ()
-        | Some nodes -> 
-            for (node, weight) in nodes do
-                let msg', terminate = f msg v node weight
-                if terminate then () else g.SendMessageToChildren(msg', node, f)
+        let neighbors = g.GetEdges v 
+        for (node, weight) in neighbors do
+            let msg', terminate = f msg (v, node, weight)
+            if terminate then () else g.SendMessageToChildren(msg', node, f)
 
     /// <summary>
     /// Asynchronously sends a message `msg` to child nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
@@ -678,16 +768,14 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
-    member g.SendMessageToChildrenAsync(msg:'b, v, f) =
-        let neighbors = g.GetEdges v
-        match neighbors with
-        | None -> ()
-        | Some nodes -> 
-            async {
-                for (node, weight) in nodes do
-                    let! msg', terminate = f msg v node weight
-                    if terminate then () else g.SendMessageToChildrenAsync(msg', node, f)
-            } |> Async.Start
+    member g.SendMessageToChildrenAsync(msg:'b, v, f) = 
+        async {
+            let neighbors = g.GetEdges v 
+            for (node, weight) in neighbors do
+                let! msg', terminate = async {return f msg (v, node, weight)}
+                if terminate then () 
+                else do! g.SendMessageToChildrenAsync(msg', node, f)
+        }  
 
     /// <summary>
     /// Sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
@@ -698,7 +786,7 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     member g.SendMessageToParents(msg:'b, v, f) =
         let nodes = g.InEdgesWeights v 
         for ((node, _), weight) in nodes do
-            let msg', terminate = f msg v node weight
+            let msg', terminate = f msg (v, node, weight)
             if terminate then () else g.SendMessageToParents(msg', node, f)
 
     /// <summary>
@@ -708,13 +796,13 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToParentsAsync(msg:'b, v, f) =
-        let nodes = g.InEdgesWeights v 
-        async {
+         async {
+            let nodes = g.InEdgesWeights v 
             for ((node, _), weight) in nodes do
-                let! msg', terminate = f msg v node weight
-                if terminate then () else g.SendMessageToParentsAsync(msg', node, f)
-        } |> Async.Start
-
+                let! msg', terminate = async { return f msg (v, node, weight)}
+                if terminate then () 
+                else do! g.SendMessageToParentsAsync(msg', node, f)
+        }  
     /// <summary>
     /// Sends a message `msg` to neighbor nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
     /// </summary>
@@ -722,11 +810,10 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighbors (msg:'b, v, f) =
-        let nodes = 
-            match g.GetEdges v with
-            | Some nodes -> Array.append nodes [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-            | None -> [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-        for (node, weight) in nodes do
+        let nodes = g.GetEdges v
+        let allnodes = Array.append nodes [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
+            
+        for (node, weight) in allnodes do
             let msg', terminate = f msg v node weight
             if terminate then () else g.SendMessageToNeighbors(msg', node, f)
 
@@ -737,15 +824,13 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighborsAsync (msg:'b, v, f) =
-        let nodes = 
-            match g.GetEdges v with
-            | Some nodes -> Array.append nodes [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-            | None -> [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
         async {
+            let nodes = Array.append (g.GetEdges v) [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
             for (node, weight) in nodes do
-                let! msg', terminate = f msg v node weight
-                if terminate then () else g.SendMessageToNeighborsAsync(msg', node, f)
-        } |> Async.Start
+                let! msg', terminate = async { return f msg (v, node, weight) }
+                if terminate then () 
+                else do! g.SendMessageToNeighborsAsync(msg', node, f)
+        } 
     
     member g.InEdgesWeights v =
         [|for KeyValue(a, vs) in edges do
@@ -769,10 +854,6 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
         [|for KeyValue(a, vs) in edges do
             if vs.ContainsKey v then yield a |]
 
-    member g.InsertEdge(v0, v1, w) =
-        match edges.TryFind v0 with
-        | None -> ()
-        | Some es -> es.ExpandElseAdd(v1, (fun _ -> w), w)
 
     member g.ContainsVertex v = edges.ContainsKey v
 
@@ -793,11 +874,15 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
         let! elist0 = edges.TryFind v1
         return (elist0.ContainsKey v2) }
 
-    member g.GetEdgesRaw v = maybe { 
-        let! elist = edges.TryFind v
-        return elist }
+    member g.GetEdgesRaw v =
+        seq {
+            match edges.TryFind v with
+            | Some edgelist -> yield! edgelist
+            | _ -> ()
+        }
 
-    member g.GetEdges v = Option.map keyValueSeqtoPairArray (g.GetEdgesRaw v)
+    member g.GetEdges v = 
+        keyValueSeqtoPairArray (g.GetEdgesRaw v)
 
     member g.Edges = 
         [|for KeyValue(v1,vs) in g.EdgeData do
@@ -809,44 +894,30 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
         [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count|]  
 
     member g.NodeNeighborCount v = 
-        Option.map (fun (vs:Dict<_,_>) -> vs.Count) (edges.TryFind v) 
-
-    member g.InsertFromTuples (tuples : _ ) =
-        for (v1, v2, w) in tuples do
-            match v1 with 
-            | Some v1 ->
-                g.InsertNode v1 |> ignore
-                g.InsertNode v2 |> ignore
-                g.InsertEdge(v1, v2, w)
-            | None ->
-                g.InsertNode v2 |> ignore
-
-    static member fromTuples (tuples:_) =
-        let g = new GeneralDirectedGraph<'a,'b>()
-        g.InsertFromTuples tuples
-        g
+        Option.map (fun (vs:Dict<_,_>) -> vs.Count) (edges.TryFind v)  
 
     interface IWeightedGraph<'a,'w> with
         member g.Vertices = g.Vertices
         member g.Edges = Array.map fst g.Edges
         member g.WeightedEdges = g.Edges
-        member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
+        member g.GetNeighbors n = g.GetEdges n |> Array.map fst
         member g.GetWeightedEdges n = g.GetEdges n
         member g.IsDirected = true
-        member g.AddNode v = g.InsertNode v |> ignore
+        member g.AddNode v = g.AddNode v |> ignore
         member g.RemoveNode v = g.Remove v |> ignore
         member g.Ins v = g.Ins v
-        member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
-        member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
-        member g.GetRawEdges v = g.GetEdgesRaw v 
+        member g.AddEdges _ = failwith "Need weights"
+        member g.AddWeightedEdge((v1, v2, w))  = g.AddEdge (v1, v2, w)  |> ignore
+        member g.AddWeightedEdges edges = g.AddEdges edges
+        member g.GetNodeNeighborCounts() = g.NodeNeighborCounts() 
         member g.ApplyToEdges f = g.ForEachEdge f 
-        member g.InsertEdge(_,_)= failwith "Need weight"
+        member g.AddEdge(_,_)= failwith "Need weight"
         member g.GetEdgeValue (a,b) = g.GetEdgeWeight (a,b)
         member g.RawEdgeData() =
             Dict.ofSeq
                 [| for KeyValue(k, v) in g.EdgeData -> k, Hashset(v.Keys) |]
 
-        member g.RawEdgeWeightData() = g.EdgeData  
+        member g.RawEdgeWeightData() = Choice1Of2 g.EdgeData  
         member g.HasCycles = cyclic
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.IsWeightNormalized = weightnormalized 
@@ -854,6 +925,7 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
         member g.RemoveEdge(u,v,clearIsolatedNodes) = g.RemoveEdge(u,v,clearIsolatedNodes) |> ignore
          
+
 type DirectedMultiGraph<'a, 'w when 'a: equality>() =
    let mutable edges = Dict<'a, Dict<'a, 'w ResizeArray>>()
     
@@ -906,19 +978,34 @@ type DirectedMultiGraph<'a, 'w when 'a: equality>() =
 
    member g.EdgeData = edges
 
-   member g.InsertEdge(v0, v1, w) =
-       maybe {
-           let! edge = edges.TryFind v0
+   member g.AddEdge(v0, v1, w) =  
+        if not (edges.ContainsKey v0) then
+            edges.Add(v0, Dict())
 
-           match edge.TryFind v1 with
-           | None ->
-               g.InsertNode v1 |> ignore
-               edge.Add(v1, ResizeArray([ w ]))
-               return true
-           | Some n ->
-               n.Add w
-               return true
-       }
+        let outgoingEdges = edges[v0]
+        match outgoingEdges.TryFind v1 with
+        | Some ws -> ws.Add w
+        | None -> outgoingEdges.Add(v1, ResizeArray [w])    
+       
+    member g.AddEdges (edges: _ seq) = 
+        for (v1, v2, w) in edges do g.AddEdge(v1, v2, w)
+
+    member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
+       let docleanup = defaultArg clearIsolatedNodes true
+       maybe {
+           let! connectedToNode1 = edges.TryFind v1
+           let r = connectedToNode1.Remove(v2)
+
+           let _ =
+               if docleanup && connectedToNode1.Count = 0
+                   && Array.isEmpty (g.InEdges v1) then edges.Remove v1 |> ignore 
+           return r
+       } 
+
+   static member fromEdges (edges:_) =
+        let g = new DirectedMultiGraph<'a,'b>()
+        g.AddEdges edges
+        g 
 
    ///f informs whether the node is penultimate or not.
    member g.ModifyNodeEdges f n =
@@ -949,21 +1036,22 @@ type DirectedMultiGraph<'a, 'w when 'a: equality>() =
 
    member g.GetEdges v =
        match edges.TryFind v with
-       | None -> None
-       | Some elist ->
-           [| for KeyValue (k, vs) in elist do
-                  for w in vs -> k, w |]
-           |> Some 
+       | None -> [||]
+       | Some edgeList ->
+           [| for KeyValue (k, ws) in edgeList do
+                  for w in ws -> k, w |] 
 
    member g.ForEachEdge f =
        for KeyValue(v, vs) in edges do
            for KeyValue(v2, ws) in vs do 
                for i in 0..ws.Count - 1 do ws[i] <- f ws[i] 
    
-   member g.GetEdgeWeight (v1, v2) = maybe { 
-       let! es = edges.TryFind v1
-       let! w = es.TryFind v2
-       return w |> Seq.toArray }
+    member g.GetEdgeWeight (v1, v2) = 
+        maybe { 
+            let! es = edges.TryFind v1
+            let! w = es.TryFind v2
+            return w |> Seq.toArray 
+        }
 
    member g.Ins v = 
        [|for KeyValue(a, vs) in edges do
@@ -979,55 +1067,28 @@ type DirectedMultiGraph<'a, 'w when 'a: equality>() =
    member g.NodeNeighborCount v = 
        Option.map (fun (vs:Dict<_,_>) -> vs.Count) (edges.TryFind v) 
 
-   member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
-       let docleanup = defaultArg clearIsolatedNodes true
-       maybe {
-           let! connectedToNode1 = edges.TryFind v1
-           let r = connectedToNode1.Remove(v2)
-
-           let _ =
-               if docleanup && connectedToNode1.Count = 0
-                   && Array.isEmpty (g.InEdges v1) then edges.Remove v1 |> ignore 
-           return r
-       } 
-
-   member g.InsertFromTuples (tuples : _ ) =
-        for (v1, v2, w) in tuples do
-            match v1 with 
-            | None -> 
-                g.InsertNode v2 |> ignore
-            | Some v1 ->
-                g.InsertNode v1 |> ignore
-                g.InsertNode v2 |> ignore
-                g.InsertEdge(v1, v2, w) |> ignore
-
-   static member fromTuples (tuples:_) =
-        let g = new DirectedMultiGraph<'a,'b>()
-        g.InsertFromTuples tuples
-        g
-
-
    interface IWeightedGraph<'a,'w> with
        member g.Vertices = g.Vertices
        member g.Edges = Array.map fst g.Edges
        member g.WeightedEdges = g.Edges 
        member g.Ins v = g.Ins v
-       member g.GetNeighbors n = g.GetEdges n |> Option.map (Array.map fst)
+       member g.GetNeighbors n = g.GetEdges n |> Array.map fst
        member g.GetWeightedEdges n = g.GetEdges n
        member g.AddNode v = g.InsertNode v |> ignore
        member g.RemoveNode v = g.Remove v |> ignore
-       member g.InsertWeightedEdge e = g.InsertEdge e |> ignore
+       member g.AddWeightedEdge e = g.AddEdge e
+       member g.AddWeightedEdges edges = g.AddEdges edges
        member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
        member g.GetEdgeValue (a,b) = failwith "Not compatible"
        member g.RawEdgeData() = Dict.ofSeq [|for KeyValue(k,v) in g.EdgeData -> k, Hashset(v.Keys)|]  
-       member g.RawEdgeWeightData() = failwith "Not compatible"
-       member g.GetRawEdges v = failwith "Not compatible"   
+       member g.RawEdgeWeightData() = failwith "Not compatible" 
        member g.GetNodeNeighborCount v = g.NodeNeighborCount v
        member g.ApplyToEdges f = g.ForEachEdge f 
        member g.IsDirected = true 
        member g.IsWeightNormalized = weightnormalized
        member g.HasCycles = cyclic 
-       member g.InsertEdge(_,_)= failwith "Need weight" 
+       member g.AddEdge(_,_)= failwith "Need weights" 
+       member g.AddEdges _ = failwith "Need weights"
        member g.ContainsEdge(u,v) = g.ContainsEdge(u,v)
        member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
        member g.RemoveEdge(u,v,clearIsolatedNodes) = 
@@ -1052,7 +1113,7 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
         [|for KeyValue(u,vs) in edges ->
             u, Dict.ofSeq [|for v in vs -> v, 1.|] |]
         |> Dict.ofSeq
-        |> wg.InsertRange  
+        |> wg.FromDictionary  
         wg
 
     member g.RemoveVerticesWhere f =
@@ -1066,11 +1127,11 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
             for v2 in vs do
                 if f ((v,v2)) then g.RemoveEdge(v,v2) |> ignore
 
-    member g.InsertRange(edgesRaw) =
+    member g.FromDictionary(edgesDict) =
         edges.Clear()
-        edges <- edgesRaw 
+        edges <- edgesDict 
 
-    member g.InsertNode(s : 'a) =
+    member g.AddNode(s : 'a) =
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s, Hashset())
         contained 
@@ -1092,15 +1153,13 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
                 edges.[a].Remove b |> ignore 
             edges.Remove v  
 
-    member g.InsertEdge(node1,node2) =  
-        maybe {
-            let! connectedsToNode1 = edges.TryFind node1
-            if connectedsToNode1.Contains node2 then 
-                return false
-            else
-                connectedsToNode1.Add(node2) |> ignore
-                return true
-        } 
+    member g.AddEdge(node1,node2) =  
+        if not (edges.ContainsKey node1) then
+            edges.Add(node1, Hashset())
+        edges[node1].Add node2
+
+    member g.AddEdges (edges: _ seq) = 
+        for (v1, v2) in edges do g.AddEdge(v1, v2) |> ignore
 
     member g.RemoveEdge(v1,v2, ?clearIsolatedNodes) =
         let docleanup = defaultArg clearIsolatedNodes true
@@ -1120,12 +1179,12 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
         let! elist0 = edges.TryFind v1
         return (elist0.Contains v2) }
 
-    member g.GetEdgesRaw v = maybe { 
-        let! elist = edges.TryFind v
-        return elist 
-    }
+    member g.GetEdgesRaw v = 
+        match edges.TryFind v with
+        | Some edgelist -> edgelist 
+        | _ -> Hashset() 
 
-    member g.GetEdges v = Option.map Seq.toArray (g.GetEdgesRaw v)
+    member g.GetEdges v = Seq.toArray (g.GetEdgesRaw v)
 
     member g.Edges = 
         [|for KeyValue(v1,vs) in g.EdgeData do
@@ -1140,26 +1199,16 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
         Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.TryFind v)  
     
     static member ofChain l =   
-        let dg = DirectedGraph()
-        for v in l do dg.InsertNode v |> ignore
+        let dg = DirectedGraph() 
 
         List.pairwise l 
-        |> List.iter (dg.InsertEdge >> ignore)
+        |> List.iter (dg.AddEdge >> ignore)
 
         dg
-
-    member g.InsertFromTuples (tuples : _ ) =
-        for (v1, v2) in tuples do
-            match v1 with 
-            | None -> g.InsertNode v2 |> ignore
-            | Some v1 -> 
-                g.InsertNode v1 |> ignore
-                g.InsertNode v2 |> ignore
-                g.InsertEdge(v1, v2) |> ignore
-
-    static member fromTuples (tuples:_) =
+ 
+    static member fromEdges (edges:_) =
         let g = new DirectedGraph<'a>()
-        g.InsertFromTuples tuples
+        g.AddEdges edges
         g
 
     interface IGraph<'a> with
@@ -1168,7 +1217,7 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
         member g.GetNeighbors n = g.GetEdges n  
         member g.IsDirected = true
         member g.Ins v = g.Ins v
-        member g.AddNode v = g.InsertNode v |> ignore
+        member g.AddNode v = g.AddNode v |> ignore
         member g.RemoveNode v = g.Remove v |> ignore 
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.RawEdgeData() = g.EdgeData  
@@ -1176,6 +1225,7 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v   
         member g.ContainsEdge(u,v) = g.ContainsEdge(u,v)
         member g.RemoveEdge(u,v) = g.RemoveEdge(u,v,false) |> ignore
-        member g.InsertEdge(u,v) = g.InsertEdge(u,v) |> ignore
+        member g.AddEdge(u,v) = g.AddEdge(u,v) |> ignore
+        member g.AddEdges edges = g.AddEdges edges
         member g.RemoveEdge(u,v,clearIsolatedNodes) = 
             g.RemoveEdge(u,v, clearIsolatedNodes) |> ignore

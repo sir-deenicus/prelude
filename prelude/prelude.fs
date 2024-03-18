@@ -147,6 +147,9 @@ module Pair =
 
     let toArray (a,b) = [|a;b|]
 
+    //to kv pair as would be found in a dictionary
+    let toKeyValuePair (a,b) = KeyValuePair(a,b)
+
     let ofSeq (a:seq<_>) =
         Seq.head a, Seq.head (Seq.skip 1 a)
 

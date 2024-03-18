@@ -16,34 +16,64 @@ type SortDirection = Ascending | Descending
    
 module WeightedGraph =
     let getWeightsDict f (g: IWeightedGraph<_, _>) =
-        let d = Dict<_,_>()
-        for KeyValue(n, es) in g.RawEdgeWeightData() do
-            d.Add
-                (n, [| for KeyValue(n2, w) in es -> n2, f w |]
-                     |> Dict.ofSeq)
-        d
-
-    let getWeightsFilteredDict nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
-        let d = Dict<_,_>()
-        for (KeyValue(n1, es)) in g.RawEdgeWeightData() do
-            if nodefilter n1 then
+        match g.RawEdgeWeightData() with 
+        | Choice1Of2 nodeEdgeWeights -> 
+            let d = Dict<_,_>()
+            for KeyValue(n, es) in nodeEdgeWeights do
                 d.Add
-                    (n1,
-                     [| for KeyValue(n2, w) in es do
-                         if edgefilter ((n1, n2), w) then yield (n2, w) |]
-                     |> Dict.ofSeq)
-        d
+                    (n, [| for KeyValue(n2, w) in es -> n2, f w |]
+                         |> Dict.ofSeq)
+            Choice1Of2 d
+        | Choice2Of2 edgeWeights -> 
+            let d = Dict<_,_>()
+            for KeyValue((n1, n2), w) in edgeWeights do     
+                d.Add(struct (n1, n2), f w)
+            Choice2Of2 d 
+
+    let getWeightsFilteredDict nodefilter edgefilter (g: IWeightedGraph<_, _>) =  
+        match g.RawEdgeWeightData() with
+        | Choice1Of2 nodeEdgeWeights -> 
+            let d = Dict<_,_>()
+            for KeyValue(n, es) in nodeEdgeWeights do
+                if nodefilter n then
+                    d.Add
+                        (n,
+                         [| for KeyValue(n2, w) in es do
+                             if edgefilter ((n, n2), w) then yield (n2, w) |]
+                         |> Dict.ofSeq)
+            Choice1Of2 d
+        | Choice2Of2 edgeWeights ->
+            let d = Dict<_,_>()
+            for KeyValue((n1, n2), w) in edgeWeights do
+                if nodefilter n1 && edgefilter ((n1, n2), w) then
+                    d.Add(struct (n1, n2), w)
+            Choice2Of2 d 
+
+    let edgeWeightsOfEdgesDict (d:Dict<_,_>) =
+        let ew = Dict()
+        for KeyValue(v1, vs) in d do  
+            for KeyValue(v2, w) in vs do
+                ew.Add(struct(v1, v2), w) |> ignore
+        ew
 
     let mapWeights f (g: IWeightedGraph<_, _>) =
         let d = getWeightsDict f g
         let wg = WeightedGraph()
-        wg.InsertRange d
+        match d with
+        | Choice1Of2 nodeEdgeWeights -> 
+            wg.FromDictionary (edgeWeightsOfEdgesDict nodeEdgeWeights)
+        | Choice2Of2 edgeWeights ->
+            wg.FromDictionary edgeWeights
         wg
 
     let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
         let d = getWeightsFilteredDict nodefilter edgefilter g 
         let wg = WeightedGraph()
-        wg.InsertRange d
+        match d with
+        | Choice1Of2 nodeEdgeWeights -> 
+            wg.FromDictionary (edgeWeightsOfEdgesDict nodeEdgeWeights)
+        | Choice2Of2 edgeWeights ->
+            wg.FromDictionary edgeWeights 
         wg  
     
     ///for example, given a list [a,b,c] if these are connected in the source graph, they will be connected in the target graph
@@ -55,7 +85,7 @@ module WeightedGraph =
             | None -> ()
             | Some w -> 
                 target.AddNode a; target.AddNode b
-                target.InsertWeightedEdge(a,b,w) 
+                target.AddWeightedEdge(a,b,w) 
 
     let ofEdgeList (g:IWeightedGraph<_,_>) (es : _ seq) =
         for (a,b) in es do 
@@ -63,29 +93,33 @@ module WeightedGraph =
             | None -> () 
             | Some w -> 
                 g.AddNode a; g.AddNode b
-                g.InsertWeightedEdge(a,b,w) 
+                g.AddWeightedEdge(a,b,w) 
 
     let ofWeightedEdgeList (g:IWeightedGraph<_,_>) (es : _ seq) =
-        for (a,b,_) as e in es do 
-            g.AddNode a
-            g.AddNode b
-            g.InsertWeightedEdge e
+        for e in es do  
+            g.AddWeightedEdge e
 
 module WeightedDirectedGraph =
     let mapWeights f (g: IWeightedGraph<_, _>) =
         let d = WeightedGraph.getWeightsDict f g
         
         let wg = WeightedDirectedGraph()
-        wg.InsertRange d
+        match d with
+        | Choice1Of2 nodeEdgeWeights -> 
+            wg.FromDictionary (nodeEdgeWeights)
+        | Choice2Of2 edgeWeights ->
+            wg.FromDictionary edgeWeights
         wg 
 
     let filter nodefilter edgefilter (g: IWeightedGraph<_, _>) = 
         let d = WeightedGraph.getWeightsFilteredDict nodefilter edgefilter g 
         let wg = WeightedDirectedGraph()
-        wg.InsertRange d
-        wg  
-   
-
+        match d with
+        | Choice1Of2 nodeEdgeWeights -> 
+            wg.FromDictionary (nodeEdgeWeights)
+        | Choice2Of2 edgeWeights ->
+            wg.FromDictionary edgeWeights
+        wg   
 
 module DirectedMultiGraph= 
     
@@ -235,7 +269,7 @@ module Graph =
         let nodes, nodenames = getNodesFromMermaidTxtLines lines
 
         for node in nodes do
-            gr.InsertNode(node) |> ignore
+            gr.AddNode(node) |> ignore
 
         //now we need to add the edges
         for line in lines do
@@ -244,7 +278,7 @@ module Graph =
             if parts.Length > 1 then
                 let from = getNodeName nodenames (getRawNodeParts parts.[0])
                 let toNode = getNodeName nodenames (getRawNodeParts parts.[1])
-                gr.InsertEdge(from, toNode) |> ignore
+                gr.AddEdge(from, toNode) |> ignore
 
         gr
 
@@ -256,7 +290,7 @@ module Graph =
         let nodes, nodenames = getNodesFromMermaidTxtLines lines
 
         for node in nodes do
-            gr.InsertNode(node) |> ignore
+            gr.AddNode(node) |> ignore
         //parsing edges with labels. Labels are text between arrows
         for line in lines do
             //there can be text between arrow parts such as -- text -->
@@ -270,10 +304,10 @@ module Graph =
                 if parts.Length > 2 then
                     let toNode = getNodeName nodenames (getRawNodeParts (parts.[2].Replace(">", "")))
                     let label = parts.[1].Trim()
-                    gr.InsertEdge(from, toNode, label) |> ignore
+                    gr.AddEdge(from, toNode, label) |> ignore
                 else
                     let toNode = getNodeName nodenames (getRawNodeParts (parts.[1].Replace(">", "")))
-                    gr.InsertEdge(from, toNode, "") |> ignore 
+                    gr.AddEdge(from, toNode, "") |> ignore 
         gr
 
 
@@ -294,8 +328,7 @@ type GraphAlgorithms() =
                     tempmarks.Add n |> ignore 
                     let res = 
                         g.GetNeighbors n
-                        |> Option.map (Array.exists hasCycles)
-                        |> Option.defaultValue false
+                        |> Array.exists hasCycles 
                     tempmarks.Remove n |> ignore 
                     res
         if g.IsDirected then
@@ -357,7 +390,7 @@ type GraphAlgorithms() =
         let store (removeds : Hashset<_>) (u, v) =
             let w = g.GetEdgeValue(u, v) |> Option.get
             removeds.Add(u, v, w) |> ignore
-        GraphAlgorithms.removeCyclesAux g.InsertWeightedEdge
+        GraphAlgorithms.removeCyclesAux g.AddWeightedEdge
             (fun (u, v, _) -> g.RemoveEdge(u, v)) store
             (defaultArg reAddEdges true) g
 
