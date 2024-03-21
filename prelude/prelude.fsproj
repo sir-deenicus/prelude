@@ -5,7 +5,7 @@
     <Company />
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions.</Description>
-    <Version>2.0.2</Version>
+    <Version>2.0.5</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>

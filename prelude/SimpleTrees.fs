@@ -209,9 +209,8 @@ let dispTree f =
 let graphToTreeWith prjfst getEdges (node : _) =
     let rec loop (visited : Set<_>) node =
         match (getEdges (prjfst node)) with
-        | Some es when Array.isEmpty es -> Node node
-        | None -> Node node
-        | Some edges ->
+        | es when Array.isEmpty es -> Node node 
+        | edges ->
             let children =
                 edges 
                 |> Array.filterMap 

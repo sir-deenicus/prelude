@@ -7,11 +7,11 @@ open Prelude.Collections.FibonacciHeap
 type IGraph<'Node> = 
     abstract IsDirected : bool   
     abstract HasCycles : bool option 
-    abstract Vertices : 'Node []
+    abstract Nodes : 'Node []
     abstract Edges : ('Node * 'Node) [] 
     abstract RawEdgeData : unit -> Dict<'Node, Hashset<'Node>>
     abstract AddNode : 'Node -> unit
-    abstract RemoveNode : 'Node -> unit
+    abstract RemoveNode : 'Node -> unit 
     abstract GetNeighbors : 'Node -> 'Node []  
     abstract GetNodeNeighborCounts : unit -> ('Node * int) [] 
     abstract GetNodeNeighborCount : 'Node -> int option
@@ -24,7 +24,7 @@ type IGraph<'Node> =
 
 type IWeightedGraph<'Node, 'Weight> =
     inherit IGraph<'Node> 
-    abstract WeightedEdges : (('Node * 'Node) * 'Weight) [] 
+    abstract WeightedEdges : (('Node * 'Node) * 'Weight) []  
     abstract RawEdgeWeightData : unit ->  Choice<Dict<'Node, Dict<'Node, 'Weight>>, Dict<struct('Node * 'Node), 'Weight>>
     abstract GetWeightedEdges : 'Node -> ('Node * 'Weight)[]   
     abstract GetEdgeValue : 'Node * 'Node -> 'Weight option 
@@ -33,10 +33,50 @@ type IWeightedGraph<'Node, 'Weight> =
     abstract ApplyToEdges : ('Weight -> 'Weight) -> unit
     abstract IsWeightNormalized : bool
 
+type GraphCycles<'a> = NotCyclic | IsCyclic of 'a 
+
+type GraphAlgorithms() =
+    static member isCyclic(g: IGraph<_>) =
+        let tempmarks = Hashset()
+        let visited = Hashset()
+        let mutable errorstate = None
+
+        let rec hasCycles parent n =
+            if tempmarks.Contains n then
+                errorstate <- Some n
+                true
+            else if visited.Contains n then
+                false
+            else
+                visited.Add n |> ignore
+                tempmarks.Add n |> ignore
+
+                let res =
+                    g.GetNeighbors n
+                    |> Array.exists (fun neighbor ->
+                        (Option.isNone parent || neighbor <> parent.Value)
+                        && hasCycles (Some n) neighbor)
+
+                tempmarks.Remove n |> ignore
+                res
+
+        if Array.exists (hasCycles None) g.Nodes then
+            IsCyclic errorstate.Value
+        else
+            NotCyclic
+        
+
 type UndirectedGraph<'a when 'a: equality and 'a: comparison>() = 
     let mutable edges = Dict<'a,'a Hashset>()
+    let mutable isCyclic = None 
+    member g.IsCyclic = isCyclic
     member g.EdgeData = edges   
-    
+
+    member g.CheckForCycles() =
+        match GraphAlgorithms.isCyclic g with
+        | NotCyclic -> isCyclic <- Some false
+        | IsCyclic _ -> isCyclic <- Some true
+ 
     member g.AddNode(v) =
         let contained = edges.ContainsKey v
         if not contained then edges.Add(v,Hashset())
@@ -94,7 +134,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
             return (in0,in1)
         }
 
-    member g.Vertices = [|for KeyValue(k,_) in g.EdgeData -> k|] 
+    member g.Nodes = [|for KeyValue(k,_) in g.EdgeData -> k|] 
 
     member g.Edges =
         [|for KeyValue(v1,vs) in g.EdgeData do
@@ -114,7 +154,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
             let msg', terminate = f state (v, node)
             if terminate then () else g.SendMessageToNeighbors(msg', node, f) 
      
-    member g.ContainsVertex v = edges.ContainsKey v
+    member g.ContainsNode v = edges.ContainsKey v
 
     member g.ContainsEdge(v1, v2) =
         maybe {
@@ -125,7 +165,7 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
     member g.GetEdges v =
         [| match edges.TryFind v with
            | Some vs -> yield! Seq.toArray vs
-           | None -> () |]
+           | None -> () |] 
 
     member g.NodeNeighborCounts () = 
         [|for KeyValue(v1,vs) in g.EdgeData -> v1, vs.Count |]  
@@ -135,12 +175,12 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
 
 
     interface IGraph<'a> with
-        member g.Vertices = g.Vertices
+        member g.Nodes = g.Nodes
         member g.Edges = g.Edges  
         member g.GetNeighbors n = g.GetEdges n
         member g.IsDirected = false  
-        member g.Ins _ = failwith "No a directed graph"
-        member g.RawEdgeData() = g.EdgeData 
+        member g.Ins _ = failwith "Not a directed graph"
+        member g.RawEdgeData() = g.EdgeData  
         member g.HasCycles = None
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
@@ -203,8 +243,16 @@ type internal WeightedNode<'a when 'a: comparison> =
 type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
     let mutable edges = Dict<'a, Hashset<'a>>()
     let mutable edgeWeights = Dict<struct ('a * 'a),float>()
-      
+    let mutable iscyclic = None   
     member g.EdgeData = edges 
+
+    member g.IsCyclic = iscyclic
+
+    member g.CheckForCycles() =
+        match GraphAlgorithms.isCyclic g with
+        | NotCyclic -> iscyclic <- Some false
+        | IsCyclic _ -> iscyclic <- Some true
+
 
     member g.ForEachEdge f =
         for (v, vs) in keyValueSeqtoPairArray edges do
@@ -214,7 +262,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
                 edgeWeights[struct (n1, n2)] <- f w
 
     member g.RemoveVerticesWhere f =
-        let keys = g.Vertices
+        let keys = g.Nodes
         for k in keys do
             if f k then
                 g.Remove k |> ignore
@@ -301,7 +349,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
             return (in0,in1)
         }
 
-    member g.ContainsVertex v = edges.ContainsKey v
+    member g.ContainsNode v = edges.ContainsKey v
     
     member g.AdjustWeight (v1,v2, f) =
         let vertless,vertHigher = Pair.lessToLeft(v1,v2) 
@@ -327,14 +375,17 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
     /// Sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
     /// </summary>
     /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
-    /// <param name="v">The node to send the message from</param>
+    /// <param name="n">The node to send the message from</param>
+    /// <param name = "filter">A function that takes the current state, the current node and the current targeted node and returns a boolean indicating whether to send the message to the targeted node.</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
-    member g.SendMessageToNeighbors (state:'b, v, f) =
-        let nodes = g.GetEdges v 
+    member g.SendMessageToNeighbors (state:'b, n, filter, f) =
+        let nodes = g.GetEdges n 
         for (node, weight) in nodes do
-            let msg', terminate = f state (v, node, weight)
-            if terminate then () else g.SendMessageToNeighbors (msg', node, f)
+            if filter (state, n, node) then 
+                let msg', terminate = f state (n, node, weight)
+                if terminate then () else g.SendMessageToNeighbors (msg', node, filter, f)
 
+    member g.SendMessageToNeighbors (state:'b, n, f) = g.SendMessageToNeighbors (state, n, (fun _ -> true), f)
 
     /// <summary>
     /// Asynchronously sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
@@ -359,9 +410,8 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
     member g.GetEdges v : ('a * float)[]  = 
         [| match edges.TryFind v with
             | Some vs ->
-                for v2 in vs do 
-                    let w = g.getWeight(v,v2)
-                    yield v2, w
+                for v2 in vs do  
+                    yield v2, g.getWeight(v,v2)
             | None -> ()|]
     
     member g.Edges = edgeWeights
@@ -381,7 +431,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
     member g.NodeNeighborCount v = 
         Option.map (fun (vs:Hashset<_>) -> vs.Count) (edges.TryFind v)
     
-    member g.Vertices = [|for k in edges.Keys -> k|] 
+    member g.Nodes = [|for k in edges.Keys -> k|] 
 
     ///if do max=true it does maximum spanning tree instead
     member g.MinimumSpanningTree(?domax) =
@@ -430,7 +480,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
 
     member g.ShortestPaths source = 
         let paths = g.DijkstrasShortestPath source
-        g.Vertices 
+        g.Nodes 
         |> Array.map (fun v -> g.ExtractShortestPath(id, paths, v))
 
     member g.ShortestPath (source, target) = g.ExtractShortestPath (fst, g.DijkstrasShortestPath(source, target),target)
@@ -438,7 +488,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
     member g.DijkstrasShortestPath(source, ?target) = 
         let dists = Dict.ofSeq [source,0.]
         let prev = Dict()
-        let vs = g.Vertices
+        let vs = g.Nodes
         let q = FibHeap.create()
         let visited = Hashset()
         let nodeMap = Dict()
@@ -462,10 +512,10 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
                             FibHeap.decrease_key q nodeMap.[v2] newDistance
                 false) false
         |> ignore
-        dists, prev
+        dists, prev 
     
     interface IWeightedGraph<'a,float> with
-        member g.Vertices = g.Vertices
+        member g.Nodes = g.Nodes
         member g.Edges = 
             [| for KeyValue(k,_) in g.EdgeWeights do
                 let struct (v1,v2) = k
@@ -479,7 +529,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
         member g.GetNeighbors n = g.GetEdges n |> Array.map fst 
         member g.GetWeightedEdges n = g.GetEdges n  
         member g.IsDirected = false
-        member g.RawEdgeData() = g.EdgeData
+        member g.RawEdgeData() = g.EdgeData        
         member g.RawEdgeWeightData() = Choice2Of2 (g.EdgeWeights)
         member g.AddNode v = g.AddNode v |> ignore
         member g.RemoveNode v = g.Remove v |> ignore
@@ -491,7 +541,7 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
 
         member g.GetNodeNeighborCounts() = g.NodeNeighborCounts()  
         member g.IsWeightNormalized = false
-        member g.HasCycles = None
+        member g.HasCycles = g.IsCyclic
         member g.Ins _ = failwith "Not a directed graph"
         member g.GetNodeNeighborCount v = g.NodeNeighborCount v
         member g.ApplyToEdges f = g.ForEachEdge f
