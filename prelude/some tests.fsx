@@ -1,20 +1,8 @@
-﻿//#load "prelude.fs"
-//#load "pseq.fs"
-//#load "Reducers.fs"
-//#load "math.fs"
-//#load "onlinelearning.fs"
-//#load "Trie.fs"
-//#load "TrieStringSearch.fs"
-//#load "PriorityQueues.fs"
-//#load "FibonacciHeap.fs"
-//#load "simplegraph.fs"
-//#load "stringmetrics.fs"
-#time "on"
+﻿#time "on"
 #nowarn "1125"
-
-//#r @"bin\Release\net47\System.Memory.dll"
+ 
 #r @"C:\Users\cybernetic\.nuget\packages\dictionaryslim\1.0.0\lib\netstandard2.1\DictionarySlim.dll"
-#r @"bin\Release\netstandard2.1\Prelude.dll"
+#r @"bin\Debug\net5\Prelude.dll"
  
 open Prelude.Math
 open System
@@ -26,56 +14,55 @@ open Prelude.SimpleGraphs
 open Prelude.StringMetrics
 
 open Prelude.SimpleTrees
-open Prelude.Common.Strings
 open Prelude.SimpleDirectedGraphs
 open Prelude 
 
 let g1 = DirectedGraph<int>()
 
-for i in 0..5 do g1.InsertVertex i
+for i in 0..5 do g1.AddNode i |> ignore
 
-g1.InsertEdge(5,2)
-g1.InsertEdge(5,0)
-g1.InsertEdge(4,0)
-g1.InsertEdge(4,1)
-g1.InsertEdge(2,3)
-g1.InsertEdge(3,1)
+g1.AddEdge(5,2) |> ignore
+g1.AddEdge(5,0) |> ignore
+g1.AddEdge(4,0) |> ignore
+g1.AddEdge(4,1) |> ignore
+g1.AddEdge(2,3) |> ignore
+g1.AddEdge(3,1) |> ignore
 
 let g2 = DirectedGraph<char>()
 
-for c in 'A'..'F' do g2.InsertVertex c
+for c in 'A'..'F' do g2.AddNode c |> ignore
 
-g2.InsertEdge('A','B')
-g2.InsertEdge('A','D') 
-g2.InsertEdge('B','C')
-g2.InsertEdge('C','D')
-g2.InsertEdge('C','E')
-g2.InsertEdge('D','E')
+g2.AddEdge('A','B') |> ignore
+g2.AddEdge('A','D') |> ignore
+g2.AddEdge('B','C') |> ignore
+g2.AddEdge('C','D') |> ignore
+g2.AddEdge('C','E') |> ignore
+g2.AddEdge('D','E') |> ignore
 g2
 
 let g3 = DirectedGraph<int>()
 
-for v in [5;11;2;7;8;9;3;10] do g3.InsertVertex v
+for v in [5;11;2;7;8;9;3;10] do g3.AddNode v |> ignore
 
-g3.InsertEdge(5,11)
-g3.InsertEdge(11,2)
-g3.InsertEdge(7,11)
-g3.InsertEdge(7,8)
-g3.InsertEdge(8,9)
-g3.InsertEdge(3,8)
-g3.InsertEdge(3,10)
-g3.InsertEdge(11,9)
-g3.InsertEdge(11,10) 
+g3.AddEdge(5,11) |> ignore
+g3.AddEdge(11,2) |> ignore
+g3.AddEdge(7,11) |> ignore
+g3.AddEdge(7,8) |> ignore
+g3.AddEdge(8,9) |> ignore
+g3.AddEdge(3,8) |> ignore
+g3.AddEdge(3,10) |> ignore
+g3.AddEdge(11,9) |> ignore
+g3.AddEdge(11,10) |> ignore
 
 
 let gi = CompressedDirectedGraph<int,float, _>(byte) 
 for i in 1..15 do
-    gi.InsertVertex i
+    gi.AddNode i |> ignore
     
 for x in 2..15 do
     for y in 2..15 do 
         if x <> y && x % y = 0 then
-            gi.InsertEdge(x,y,1.) |> ignore
+            gi.AddEdge(x,y,1.) |> ignore
 
 gi.ComputeReverseIndex()    
 
@@ -103,51 +90,51 @@ let page = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\dagre-temp
 let disptemplate = IO.File.ReadAllText @"C:\Users\cybernetic\Documents\Papers\disp-template.txt"
 
 let disp2(gd:IGraph<string>) =
-    let gtxt = GraphVisualization.createDagreGraphU string 30 30 gd
-    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  true "n1" 1200 1200 gtxt)
+    let gtxt = GraphVisualization.createDagreGraph None string id 30 30 false gd
+    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp true "n1" 1200 1200 gtxt)
     IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)   
 
 let disp(g0:IWeightedGraph<string,float>) =
-    let gtxt = GraphVisualization.createDagreGraph string string 30 30 g0
-    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp page  false "n1" 800 500 gtxt)
+    let gtxt = GraphVisualization.createDagreWeightedGraph None string string id 30 30 false g0
+    let fout = disptemplate.Replace ("__TEXT__", GraphVisualization.disp false "n1" 800 500 gtxt)
     IO.File.WriteAllText(@"C:\Users\cybernetic\Documents\Papers\disp.htm", fout)
     
 
      
 let gd = DirectedGraph<string>()
  
-gd.InsertVertex "X"; gd.InsertVertex "Y";gd.InsertVertex "Z"; gd.InsertVertex "U"
-gd.InsertVertex "A"
-gd.InsertVertex "B"
-gd.InsertVertex "C"
-gd.InsertVertex "D"
-gd.InsertVertex "E"
-gd.InsertVertex "F"
-gd.InsertVertex "G"
-gd.InsertEdge("U", "X")
-gd.InsertEdge("U", "Y")
-gd.InsertEdge("X", "Y")
-gd.InsertEdge("Z", "X")
-gd.InsertEdge("B", "A")
-gd.InsertEdge("C", "B")
-gd.InsertEdge("A", "C") 
-gd.InsertEdge("D", "B" )
-gd.InsertEdge("D", "C" )
-gd.InsertEdge("E", "D" )
-gd.InsertEdge("C", "E")
-gd.InsertEdge("F", "D") 
-gd.InsertEdge("E", "F") 
-gd.InsertEdge("A", "F") 
-gd.InsertEdge("F", "G" )
-gd.InsertEdge("E", "G" )
-gd.InsertEdge("D", "G" )
-gd.InsertEdge("G", "D" )
-gd.InsertEdge("F", "F")
-gd.InsertEdge("G", "C" )
-gd.InsertEdge("G", "Y" )
-gd.InsertEdge("B", "G" )
-gd.InsertEdge("A", "Z" )
-gd.InsertEdge("Y", "D" ) 
+gd.AddNode "X" |> ignore; gd.AddNode "Y" |> ignore; gd.AddNode "Z" |> ignore; gd.AddNode "U" |> ignore
+gd.AddNode "A" |> ignore
+gd.AddNode "B" |> ignore
+gd.AddNode "C" |> ignore
+gd.AddNode "D" |> ignore
+gd.AddNode "E" |> ignore
+gd.AddNode "F" |> ignore
+gd.AddNode "G" |> ignore
+gd.AddEdge("U", "X") |> ignore
+gd.AddEdge("U", "Y") |> ignore
+gd.AddEdge("X", "Y") |> ignore
+gd.AddEdge("Z", "X") |> ignore
+gd.AddEdge("B", "A") |> ignore
+gd.AddEdge("C", "B") |> ignore
+gd.AddEdge("A", "C") |> ignore
+gd.AddEdge("D", "B" ) |> ignore
+gd.AddEdge("D", "C" ) |> ignore
+gd.AddEdge("E", "D" ) |> ignore
+gd.AddEdge("C", "E") |> ignore
+gd.AddEdge("F", "D") |> ignore
+gd.AddEdge("E", "F") |> ignore
+gd.AddEdge("A", "F") |> ignore
+gd.AddEdge("F", "G" ) |> ignore
+gd.AddEdge("E", "G" ) |> ignore
+gd.AddEdge("D", "G" ) |> ignore
+gd.AddEdge("G", "D" ) |> ignore
+gd.AddEdge("F", "F") |> ignore
+gd.AddEdge("G", "C" ) |> ignore
+gd.AddEdge("G", "Y" ) |> ignore
+gd.AddEdge("B", "G" ) |> ignore
+gd.AddEdge("A", "Z" ) |> ignore
+gd.AddEdge("Y", "D" ) |> ignore
  
 GraphAlgorithms.removeCycles gd
   
@@ -165,7 +152,7 @@ let disconnectedSubGraphs (all:Hashset<_>) (first, g:IGraph<_>) =
     let edges = Hashset()
     let rec build v =
         let inNodes = if g.IsDirected then g.Ins v else Array.empty 
-        let outNodes = Option.defaultValue Array.empty (g.GetNeighbors v) 
+        let outNodes = g.GetNeighbors v
         seen.Add v |> ignore; all.Remove v |> ignore
         for v2 in inNodes do  
             edges.Add(v2, v) |> ignore
@@ -181,7 +168,7 @@ let ffb (all:Hashset<_>) (first, g:IGraph<_>) =
     let rec build v =
         [|  let inNodes = if g.IsDirected then g.Ins v else Array.empty
                           |> Array.filter (seen.Contains >> not)
-            let outNodes = Option.defaultValue Array.empty (g.GetNeighbors v)
+            let outNodes = g.GetNeighbors v
                            |> Array.filter (seen.Contains >> not)
             seen.Add v |> ignore; all.Remove v |> ignore
             for v2 in inNodes do  
@@ -193,7 +180,7 @@ let ffb (all:Hashset<_>) (first, g:IGraph<_>) =
     build first 
     
 let ff2 (first, g:IGraph<_>) = 
-    let all = Hashset(g.Vertices)
+    let all = Hashset(g.Nodes)
     let rec loop node1 =
         [| yield (ffb all (node1, g)) 
            if all.Count > 0 then yield ffb all (Seq.head all, g)|] 
@@ -201,30 +188,29 @@ let ff2 (first, g:IGraph<_>) =
     |> loop 
  
 let gd2 = DirectedGraph<string>()
-ff2 (None, g0) 
-gd2.InsertVertex "X"
-gd2.InsertVertex "Y"
-gd2.InsertVertex "Z"
-gd2.InsertVertex "U"
-gd2.InsertVertex "A"
-gd2.InsertVertex "B"
-gd2.InsertVertex "C"
-gd2.InsertVertex "D"
-gd2.InsertEdge("U", "X")
-gd2.InsertEdge("U", "Y")
-gd2.InsertEdge("X", "Y")
-gd2.InsertEdge("Z", "X")
-gd2.InsertEdge("B", "A")
-gd2.InsertEdge("C", "B")
-gd2.InsertEdge("A", "C") 
-gd2.InsertEdge("D", "B" )
+gd2.AddNode "X" |> ignore
+gd2.AddNode "Y" |> ignore
+gd2.AddNode "Z" |> ignore
+gd2.AddNode "U" |> ignore
+gd2.AddNode "A" |> ignore
+gd2.AddNode "B" |> ignore
+gd2.AddNode "C" |> ignore
+gd2.AddNode "D" |> ignore
+gd2.AddEdge("U", "X") |> ignore
+gd2.AddEdge("U", "Y") |> ignore
+gd2.AddEdge("X", "Y") |> ignore
+gd2.AddEdge("Z", "X") |> ignore
+gd2.AddEdge("B", "A") |> ignore
+gd2.AddEdge("C", "B") |> ignore
+gd2.AddEdge("A", "C") |> ignore
+gd2.AddEdge("D", "B" ) |> ignore
  
-let first = (Seq.head gd2.Vertices)
-let all = Hashset (gd2.Vertices)
+let first = Seq.head gd2.Nodes
+let all = Hashset gd2.Nodes
 Seq.toArray all
 
 
-for _ in 1..100000 do ffb all (first,gd2)
+for _ in 1..100000 do ffb all (first,gd2) |> ignore
 
 disp2 gd2
 
@@ -232,39 +218,39 @@ disp2 gd2
 
 let g0 = CompressedDirectedGraph<string,float,_>(uint16, true)
  
-g0.InsertVertex "X"; g0.InsertVertex "Y";g0.InsertVertex "Z"; g0.InsertVertex "U"
-g0.InsertEdge("U", "X", 1.)
-g0.InsertEdge("U", "Y", 1.)
-g0.InsertEdge("X", "Y", 1.)
-g0.InsertEdge("Z", "X", 1.)
+g0.AddNode "X" |> ignore; g0.AddNode "Y" |> ignore; g0.AddNode "Z" |> ignore; g0.AddNode "U" |> ignore
+g0.AddEdge("U", "X", 1.) |> ignore
+g0.AddEdge("U", "Y", 1.) |> ignore
+g0.AddEdge("X", "Y", 1.) |> ignore
+g0.AddEdge("Z", "X", 1.) |> ignore
 
-g0.InsertVertex "A"
-g0.InsertVertex "B"
-g0.InsertVertex "C"
-g0.InsertVertex "D"
-g0.InsertVertex "E"
-g0.InsertVertex "F"
-g0.InsertVertex "G"
-g0.InsertEdge("B", "A" , 2.)
-g0.InsertEdge("C", "B" , 3.)
-g0.InsertEdge("A", "C" , 3.) 
-g0.InsertEdge("D", "B" , 1.)
-g0.InsertEdge("D", "C" , 1.)
-g0.InsertEdge("E", "D" , 1.)
-g0.InsertEdge("C", "E" ,5.3)
-g0.InsertEdge("F", "D" ,4.) 
-g0.InsertEdge("E", "F" ,2.) 
-g0.InsertEdge("A", "F" ,6.) 
-g0.InsertEdge("F", "G" ,5.2)
-g0.InsertEdge("E", "G" ,5.2)
-g0.InsertEdge("D", "G" ,5.2)
-g0.InsertEdge("G", "D" ,5.2)
-g0.InsertEdge("F", "F" ,5.21)
-g0.InsertEdge("G", "C" ,5.2)
-g0.InsertEdge("G", "Y" ,5.2)
-g0.InsertEdge("B", "G",1. )
-g0.InsertEdge("A", "Z",1. )
-g0.InsertEdge("Y", "D",1. ) 
+g0.AddNode "A" |> ignore
+g0.AddNode "B" |> ignore
+g0.AddNode "C" |> ignore
+g0.AddNode "D" |> ignore
+g0.AddNode "E" |> ignore
+g0.AddNode "F" |> ignore
+g0.AddNode "G" |> ignore
+g0.AddEdge("B", "A" , 2.) |> ignore
+g0.AddEdge("C", "B" , 3.) |> ignore
+g0.AddEdge("A", "C" , 3.) |> ignore
+g0.AddEdge("D", "B" , 1.) |> ignore
+g0.AddEdge("D", "C" , 1.) |> ignore
+g0.AddEdge("E", "D" , 1.) |> ignore
+g0.AddEdge("C", "E" ,5.3) |> ignore
+g0.AddEdge("F", "D" ,4.) |> ignore
+g0.AddEdge("E", "F" ,2.) |> ignore
+g0.AddEdge("A", "F" ,6.) |> ignore
+g0.AddEdge("F", "G" ,5.2) |> ignore
+g0.AddEdge("E", "G" ,5.2) |> ignore
+g0.AddEdge("D", "G" ,5.2) |> ignore
+g0.AddEdge("G", "D" ,5.2) |> ignore
+g0.AddEdge("F", "F" ,5.21) |> ignore
+g0.AddEdge("G", "C" ,5.2) |> ignore
+g0.AddEdge("G", "Y" ,5.2) |> ignore
+g0.AddEdge("B", "G",1. ) |> ignore
+g0.AddEdge("A", "Z",1. ) |> ignore
+g0.AddEdge("Y", "D",1. ) |> ignore
 
 g0.ComputeReverseIndex()  
 disp g0
@@ -272,7 +258,7 @@ disp g0
 GraphAlgorithms.removeCycles gd2
 
 disp g0
-GraphAlgorithms.GetNeighbors(g0, "F", 4)
+GraphAlgorithms.getNeighbors(g0, "F", 4)
 |> List.groupBy snd
 |> List.mapRight (List.map fst)
     
@@ -290,11 +276,17 @@ GraphAlgorithms.topologicalSort gd2
 
 for _ in 1..1_000_000 do GraphAlgorithms.isCyclic g0 |> ignore
  
-let (Choice1Of2 tc) = GraphAlgorithms.minimumSpanningTree g0 
+let tc = 
+    match GraphAlgorithms.minimumSpanningTree g0 with
+    | Choice1Of2 tree -> tree
+    | Choice2Of2 _ -> failwith "Expected directed spanning tree"
 
-let (Ok order) = GraphAlgorithms.topologicalSort gd2 
+let order =
+    match GraphAlgorithms.topologicalSort gd2 with
+    | Ok order -> order
+    | Error err -> failwithf "%A" err
 
-GraphAlgorithms.shortestPath(gd2.toWeightedGraph(),order,  "U")
+GraphAlgorithms.shortestPathDAG(gd2.ToWeightedGraph(), order, "U")
 |> snd 
 |> GraphAlgorithms.readOffPath "Y"   
 
@@ -303,13 +295,16 @@ let t = graphToTree gd ("C")
 
 dispTree id t
 
-let tvs, tes = toVerticesAndEdges ("") t
+let tvs, tes = toVerticesAndEdges t
 
 let d = DirectedGraph<string>()
 
-for (v) in tvs do d.InsertVertex v
+for v in tvs do d.AddNode v |> ignore
 
-for (n1), (n2) in tes do d.InsertEdge(n1,n2)
+for n1, n2 in tes do
+    match n1 with
+    | Some parent -> d.AddEdge(parent, n2) |> ignore
+    | None -> ()
 
 disp2 d
 
@@ -326,7 +321,7 @@ weightedGraphToTree g0 ("C", 0.)
 Branch("B", [Node "A"; Branch("C", [Node "D"; Branch("E", [Node "E1"])]); Node "F"])
 //|> dispTree id
 //|> find ((=) "E")  
-|> toVerticesAndEdges ""
+|> toVerticesAndEdges
 
 (*
 let commaNumber (ToString str) = 
@@ -390,7 +385,7 @@ Array.rot -2 [|1..3|] = Array.rot 1 [|1..3|]
 Array.rot -3 [|1..3|] = Array.rot 3 [|1..3|] 
 Array.rot -4 [|1..3|] = Array.rot -1 [|1..3|] 
 /////////////
-splitSentenceManual "ye. water will be 4. dollars.I say\n yes Mr. fred it's .5 to U.C.L.A. and has a Ph.D. And this is a legit sentence too."
+String.splitSentenceManual "ye. water will be 4. dollars.I say\n yes Mr. fred it's .5 to U.C.L.A. and has a Ph.D. And this is a legit sentence too."
 //////////////////////
 
 ["Apple" ; "BEE"; "CAT"; "Dog"; "elephant"] |> List.map (fun (LowerCase w) -> w)
@@ -412,61 +407,37 @@ hoursToText 24.
 DateTime.Now.AddDays(-54.).StartOfMonth()
                        
 
-errorFall {
-   let! e, b = lazy(IO.File.ReadAllBytes <| combinePaths [__SOURCE_DIRECTORY__; "prelude"; "prelude.fs"])
-   let! e2, b2 = lazy(IO.File.ReadAllBytes "none") 
-   return e,b2
- }
-
-errorFall {
-   let! e2, b2 = lazy(IO.File.ReadAllBytes "none")
-   let! e, b = lazy(IO.File.ReadAllBytes <| combinePaths [__SOURCE_DIRECTORY__; "prelude"; "prelude.fs"]) 
-   return e,b2
- }
-
-errorFall {
-   let! e2, b2 = lazy(IO.File.ReadAllBytes "none")                                                         
-   return e2,b2
- }
-
-
-   
-String.findIndexi((fun _ c -> c = 'f'), "fright", start = 4, direction = Direction.Forward)
-String.findIndexi((fun _ c -> c = 'f'), "fright", start = 4, direction = Direction.Backwards)  
+Seq.findIndexi (fun _ c -> c = 'f') "fright"
+Seq.findIndexi (fun i c -> i >= 4 && c = 'f') "fright"
 
 ////////////
 
-longestCommonSubstring "apple" "appetitie"
-longestCommonSubvec [|1;2;3;2;3|] [|4;2;3;|]   
-longestCommonSubstring "airtight" "foghorn" 
-longestCommonSubstring "airtight" "failure" 
-let lcs, t = longestCommonSubSeqStr "airtight" "foghorn"
-backtrackLCStr t  
+String.longestCommonSubstring "apple" "appetitie"
+Array.longestCommonSubvec [|1;2;3;2;3|] [|4;2;3|]   
+String.longestCommonSubstring "airtight" "foghorn" 
+String.longestCommonSubstring "airtight" "failure" 
+String.longestCommonSubSeq "airtight" "foghorn"
 
-longestCommonSubSeqStr "airtight" "failure" |> snd |> backtrackLCStr  
+String.longestCommonSubSeq "airtight" "failure"
+String.readLongestCommonSubSeqResult (String.longestCommonSubSeq "abc" "axbyc") = "abc"
       
-longestCommonSubSeq [1..9] [2..2..20] |> snd |> backtrackLCS Array.empty id Array.lift Array.append
-longestCommonSubSeq "airtight" "failure" |> snd |> backtrackLCS_str
+Seq.longestCommonSubSeq [1..9] [2..2..20]
 
-minHashStrDist 2 "kangaroo" "[angaroo" 
+String.longestCommonSubSeq "airtight" "failure"
 
-let cstr = splitNatATime id string (+) 2 (Strings.char_array "cattarang")
-cstr |> Set.map jenkinsOAThash = splitNatATimeStr 2 "cattarang"
+String.splitNatATime 2 "cattarang"
 
-strTominHash (splitNatATimeStr 2) "fold"
-
-minHashStrDist 2 "bold" "oldesky"
 ////
 
 let wg = WeightedGraph<string>()
 
-wg.InsertVertex("a")
-wg.InsertVertex("b")
-wg.InsertVertex("c")
-wg.InsertEdge("a","b", 2.)
-wg.InsertEdge("c","b", 2.)
+wg.AddNode("a") |> ignore
+wg.AddNode("b") |> ignore
+wg.AddNode("c") |> ignore
+wg.AddEdge("a","b", 2.) |> ignore
+wg.AddEdge("c","b", 2.) |> ignore
 
-wg.AdjustWeight ((+) 1.) ("a", "b") 
+wg.AdjustWeight ("a", "b", (+) 1.) 
 
 wg
 ////
@@ -483,7 +454,7 @@ Array.filteriMap (fun i x -> i + 3 < x && x % 2 = 0) squared [|0..2..9|]
 let z = Array.mapi Tuple.pair  [|0..2..9|]
 ///////////
   
-"A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> tolower |> Strings.capitilizebySpace 2
+"A CHARACTERIZATION OF ENTROPY IN TERMS OF INFORMATION LOSS" |> String.tolower |> String.capitilizebySpace 2
 
 /////
 let teststr0 = "ab"
@@ -491,15 +462,15 @@ let teststr1 = "abcdef"
 
 let padtst n f s1 s2 = "\n" + (f n s1) + " efd" + "\n" + (f n s2) + " efd"
 
-padtst 2 Strings.padcut teststr0 teststr1
+padtst 2 String.padcut teststr0 teststr1
 teststr1.Length 
 
 let tststr = "This is \"number\" five's test"
 
-tststr.Replace("'", "[apos]").Replace("\"", "[qu]").Replace (newLine, "")
-Strings.replaceMultiple [|"'", "[apos]"; "\"", "[qu]"; newLine,""|] tststr
+tststr.Replace("'", "[apos]").Replace("\"", "[qu]").Replace (String.newLine, "")
+String.replaceMultiple [|"'", "[apos]"; "\"", "[qu]"; String.newLine,""|] tststr
 
-Strings.transformMultiple Text.RegularExpressions.Regex.Escape [|"(cat)"; "dog"|] "The animal (cat) slapped the dog"
+String.transformMultiple Text.RegularExpressions.Regex.Escape [|"(cat)"; "dog"|] "The animal (cat) slapped the dog"
 
 /////
 //= [|2; 3; 7|]
@@ -508,9 +479,9 @@ Strings.transformMultiple Text.RegularExpressions.Regex.Escape [|"(cat)"; "dog"|
   [|3; 2; 8|]|] |> Array.colAverageFloats 
 
 ////
-let t = dict_as_trie [|"apple"; "app" ;"art"; "cat"; "card"; "carded"; "cap"|]
+let trieDict = dict_as_trie [|"apple"; "app" ;"art"; "cat"; "card"; "carded"; "cap"|]
 
-autocomplete 2 t "ca" 
+autocomplete 2 trieDict "ca" 
 
 //
 
@@ -526,8 +497,8 @@ let m2 = Map.ofList [1,5; 2,2; 3,7; 9,91]
 let d1 = Dict.ofIDict m1
 let d2 = Dict.ofIDict m2
 
-d1.MergeWith (-) d2
-d1.MergeWith konst d2
+d1.MergeWith ((-), d2)
+d1.MergeWith (konst, d2)
 
 d1 |> Seq.toArray |> Array.map keyValueToPair
 
@@ -542,15 +513,15 @@ m5 = m6 //false not commutative
 m5 |> Map.map (fun _ x -> abs x) = (m6 |> Map.map (fun _ x -> abs x))
  
 //Folds right?
-let m  = Dict.ofSeq [(4,1); (1,3); (2,1)] 
+let mDict = Dict.ofSeq [(4,1); (1,3); (2,1)] 
 
-m.foldV (+) 0 //=5
+mDict.FoldValues(0, (+)) //=5
 
-m.fold (fun s k v -> s + k + v) 0 //12
+mDict.FoldKeyValues(0, fun s (DictKV(k, v)) -> s + k + v) //12
 
-m.fold (fun s k v -> s + string v) "" <> "311"
+mDict.FoldKeyValues("", fun s (DictKV(_, v)) -> s + string v) <> "311"
 
-m.foldKV (fun s (DictKV(k , v)) -> s + k + v) 0 = 12
+mDict.FoldKeyValues(0, fun s (DictKV(k, v)) -> s + k + v) = 12
 /////////////
 [0..10] |> Seq.takeOrMax 2 |> Seq.length = 2
 [0..10] |> Seq.takeOrMax 200 |> Seq.length = 11
@@ -559,28 +530,28 @@ m.foldKV (fun s (DictKV(k , v)) -> s + k + v) 0 = 12
 //Example - wordcount
 
 let lines = System.IO.File.ReadAllLines(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments) + "\\fhack.txt")
-time_this 100 id (fun _ ->
+timeThis 100 (fun () ->
     let c =
         lines
         |> Reducer.toSeqReducer
-        |> Reducer.collect (fun line -> Reducer.toSeqReducer <| (line |> splitToWords))
+        |> Reducer.collect (fun line -> Reducer.toSeqReducer <| (line |> String.splitToWords))
         |> Reducer.countBy id
     c |> Seq.toArray) 
 // |> Reducer.groupBy id (fun _ -> 1) (fun (_, items) -> Seq.sum items)
 
 ///////////////
 
-strContainsNof 1 [|"apple"; "tree"|] "jumped off the tree"
-strContainsNof 2 [|"apple"; "tree"|] "jumped off the tree"
-strContainsNof 2 [|"apple"; "tree"|] "jumped off the apple tree"
-strContainsNof 2 [|"apple"; "tree"; "plum"|] "jumped off the plum tree"
+String.containsNof 1 [|"apple"; "tree"|] "jumped off the tree"
+String.containsNof 2 [|"apple"; "tree"|] "jumped off the tree"
+String.containsNof 2 [|"apple"; "tree"|] "jumped off the apple tree"
+String.containsNof 2 [|"apple"; "tree"; "plum"|] "jumped off the plum tree"
 
 /////////////
-removeExtrasOfString newLine (sprintf "hello%s%sthere%s%s%syes" newLine newLine newLine newLine newLine)
+String.removeExtrasOfString String.newLine (sprintf "hello%s%sthere%s%s%syes" String.newLine String.newLine String.newLine String.newLine String.newLine)
 
-removeExtrasOfString "<br/><br/>" "hey<br/>there<br/><br/>now<br/><br/><br/>oh"
+String.removeExtrasOfString "<br/><br/>" "hey<br/>there<br/><br/>now<br/><br/><br/>oh"
 
-"hey<br/>there<br/><br/>now<br/><br/><br/><br/><br/>oh".splitbystr ("<br/><br/>")  |> joinToStringWith("<br/><br/>")
+"hey<br/>there<br/><br/>now<br/><br/><br/><br/><br/>oh".Splitby ("<br/><br/>")  |> String.joinWith "<br/><br/>"
  
 
 
@@ -590,7 +561,7 @@ let inf x =
     let minx,maxX = x |> Array.min, x |> Array.max 
     var, mean, minx, maxX
 
-time_this 1 () id (fun _ -> Threading.Tasks.Parallel.For(0, 50000000, (fun  _ -> RandomX.Next() |> ignore)) |> ignore )
+timeThis 1 (fun () -> Threading.Tasks.Parallel.For(0, 50000000, (fun  _ -> RandomX.Next() |> ignore)) |> ignore )
 
 let numParallel = [|0..20000|] |> Array.Parallel.map (fun _ -> RandomX.NextDouble(-100000.,100000.))
 let numSeq = [|0..20000|] |> Array.map (fun _ -> random.NextDouble(-100000.,100000.))
@@ -619,14 +590,14 @@ bucketRange 0 5. 40. = 40.
 bucketRange 1 0.5 1.6 = 1.5
 
 /////contain
-strContainsAll [|"apple"; "bag"; "key"|] "apple bag key" 
-strContainsAll [|"apple"; "bag"; "key"|] "applebagkey" 
-strContainsAll [|"apple"; "bag"; "key"|] "applbagkey"  
+String.containsAll [|"apple"; "bag"; "key"|] "apple bag key" 
+String.containsAll [|"apple"; "bag"; "key"|] "applebagkey" 
+String.containsAll [|"apple"; "bag"; "key"|] "applbagkey"  
 
-strContainsOneOf [|"apple"; "bag"; "key"|] "apple bag key" 
-strContainsOneOf [|"apple"; "bag"; "key"|] "applebagkey" 
-strContainsOneOf [|"apple"; "bag"; "key"|] "applbagkey" 
-strContainsOneOf [|"apple"; "bag"; "key"|] "applbigkay" 
+String.containsOneOf [|"apple"; "bag"; "key"|] "apple bag key" 
+String.containsOneOf [|"apple"; "bag"; "key"|] "applebagkey" 
+String.containsOneOf [|"apple"; "bag"; "key"|] "applbagkey" 
+String.containsOneOf [|"apple"; "bag"; "key"|] "applbigkay" 
 
 /////////
 // From: http://stackoverflow.com/questions/286427/calculating-permutations-in-f
@@ -671,6 +642,35 @@ mm.Register("A", A)
 mm.Register("B", B)
 
 mm.Post({NextState = "A"; Mem = 0})
+
+type SimpleChildState =
+    | Step1
+    | Step2
+
+type SimpleHfsmState =
+    | Working of SimpleChildState
+    | Finished
+
+let simpleHfsm = StateMachineExec<SimpleHfsmState, int>(Finished)
+
+simpleHfsm.Register(
+    Working Step1,
+    fun count ->
+        printfn "Exact child handler: Step1, count = %d" count
+        { NextState = Working Step2; Mem = count + 1 })
+
+simpleHfsm.RegisterCase(
+    (function
+     | Working child -> Some child
+     | _ -> None),
+    fun child count ->
+        printfn "Parent handler: %A, count = %d" child count
+        match child with
+        | Step1 -> { NextState = Working Step2; Mem = count + 1 }
+        | Step2 -> { NextState = Finished; Mem = count + 1 })
+|> ignore
+
+simpleHfsm.Post({ NextState = Working Step1; Mem = 0 })
 
 //////////////////////
 

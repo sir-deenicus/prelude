@@ -628,8 +628,11 @@ module GraphVisualization =
 
     //====================================
 
+    let jsString (s: string) =
+        System.Text.Json.JsonSerializer.Serialize(s)
+
     let fixlen maxlen s =
-        if String.length s > maxlen then s.Replace(",", "\\n").Replace("/", "\\n")
+        if String.length s > maxlen then s.Replace(",", "\n").Replace("/", "\n")
         else s 
        
     let createDagreWeightedGraph flexwidth edgeStr nodestr fixlen maxw h htmlLabels
@@ -640,13 +643,14 @@ module GraphVisualization =
             g.Nodes
             |> Seq.map (fun v ->
                     let maxw = match flexwidth with | Some f -> f v | None -> maxw
-                    $"g.setNode('{v}', {{{labelstyle}label:'{(fixlen (nodestr v))}', width:{maxw}, height:{h}}});")
+                    $"g.setNode({jsString (string v)}, {{{labelstyle}label:{jsString (fixlen (nodestr v))}, width:{maxw}, height:{h}}});")
             |> String.joinWith "\n"
 
         let es =
             g.WeightedEdges 
             |> Array.mapi (fun i ((e1, e2), w) ->
-                $"g.setEdge('{e1}', '{e2}', {{{labelstyle}{arrowType}label: '{edgeStr w}'}}, 'e{i}')") 
+                let edgeId = $"e{i}"
+                $"g.setEdge({jsString (string e1)}, {jsString (string e2)}, {{{labelstyle}{arrowType}label: {jsString (edgeStr w)}}}, {jsString edgeId})") 
             |> String.joinWith "\n"
 
         vs, es    
@@ -666,13 +670,13 @@ module GraphVisualization =
             g.Nodes
             |> Seq.map (fun v ->
                 let maxw = match flexwidth with | Some f -> f v | None -> maxw
-                $"g.setNode('{v}', {{{labelstyle}label:'{(fixlen (nodestr v))}', width:{maxw}, height:{h}}});")
+                $"g.setNode({jsString (string v)}, {{{labelstyle}label:{jsString (fixlen (nodestr v))}, width:{maxw}, height:{h}}});")
             |> String.joinWith "\n"
 
         let es =
             g.Edges  
             |> Array.map (fun (e1, e2) ->
-                $"g.setEdge('{e1}', '{e2}'{startBrace}{labelstyle}{arrowType}{endBrace})") 
+                $"g.setEdge({jsString (string e1)}, {jsString (string e2)}{startBrace}{labelstyle}{arrowType}{endBrace})") 
             |> String.joinWith "\n"
         vs, es     
  

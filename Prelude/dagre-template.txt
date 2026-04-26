@@ -1,5 +1,7 @@
 ﻿
+<div class="dagre-graph">
 <svg id="svgid" width=svgwidth height=svgheight></svg>
+</div>
 
 <script> 
 
@@ -15,6 +17,73 @@ var g = new dagreD3.graphlib.Graph({ multigraph: true })
 __NODES_HERE__
  
 __EDGES_HERE__ 
+
+function tryRenderKatex(tex, displayMode) {
+  if (!window.katex) return null;
+
+  try {
+    var html = katex.renderToString(tex, {
+      throwOnError: false,
+      displayMode: displayMode,
+      output: "html"
+    });
+
+    return '<span class="dagre-math-label">' + html + '</span>';
+  } catch (err) {
+    return null;
+  }
+}
+
+function renderMathMarkup(label) {
+  if (typeof label !== "string") return null;
+
+  var rendered = label;
+  var changed = false;
+
+  function replaceMarkup(pattern, displayMode) {
+    rendered = rendered.replace(pattern, function(match, p1, p2) {
+      var prefix = p2 !== undefined ? p1 : "";
+      var tex = p2 !== undefined ? p2 : p1;
+      var html = tryRenderKatex(tex, displayMode);
+      if (!html) return match;
+      changed = true;
+      return prefix + html;
+    });
+  }
+
+  replaceMarkup(/\$\$([\s\S]+?)\$\$/g, true);
+  replaceMarkup(/\\\[([\s\S]+?)\\\]/g, true);
+  replaceMarkup(/(^|[^$])\$([^$\n]+?)\$(?!\$)/g, false);
+  replaceMarkup(/\\\(([\s\S]+?)\\\)/g, false);
+
+  return changed ? rendered : null;
+}
+
+function applyMathLabelsToGraph(graph) {
+  graph.nodes().forEach(function(nodeId) {
+    var node = graph.node(nodeId);
+    if (!node || typeof node.label !== "string") return;
+
+    var rendered = renderMathMarkup(node.label);
+    if (rendered === null) return;
+
+    node.label = rendered;
+    node.labelType = "html";
+  });
+
+  graph.edges().forEach(function(edgeId) {
+    var edge = graph.edge(edgeId);
+    if (!edge || typeof edge.label !== "string") return;
+
+    var rendered = renderMathMarkup(edge.label);
+    if (rendered === null) return;
+
+    edge.label = rendered;
+    edge.labelType = "html";
+  });
+}
+
+applyMathLabelsToGraph(g);
 
 // Create the renderer
 var render = new dagreD3.render();
