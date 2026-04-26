@@ -329,12 +329,14 @@ let inline memoize (mem:IDict<_,_>) f x =
         y
     | Some y -> y
 
-let inline memoizeC (mem:Collections.Concurrent.ConcurrentDictionary<_,_>) f x =
-    match mem.TryFindIt x with
-    | None ->
-        let y = f x
-        mem.AddOrUpdate(x,y, (fun _ _ -> y)) 
-    | Some y -> y
+let inline memoizeC (mem:Collections.Concurrent.ConcurrentDictionary<_, Lazy<_>>) f x =
+    mem.GetOrAdd(
+        x,
+        fun key ->
+            Lazy<_>(
+                (fun () -> f key),
+                System.Threading.LazyThreadSafetyMode.ExecutionAndPublication))
+        .Value
 
 type IDictionary<'k,'v> with
    ///in combine, the first element is the source dictionary's and the other is the other's
@@ -404,6 +406,19 @@ module List =
         List.map (Pair.applyToRight (flip (/) tot)) l
     let mapRight f sq = sq |> List.map (Pair.applyToRight f)
     let removeDuplicates (xs:_ list) = List.ofSeq (Hashset(xs))
+
+    let interleave l1 l2 =
+        let rec build focusonl1 acc l1 l2 = 
+            match l1,l2 with
+            | [],[] -> List.rev acc
+            | [], x::_ -> (List.rev acc) @ l2
+            | x::_, [] -> (List.rev acc) @ l1
+            | x::xs, y::ys -> 
+                if focusonl1 then build false (x::acc) xs l2
+                else build true (y::acc) l1 ys 
+
+        build true [] l1 l2
+
     let nth i (l:'a list) = l.[i]
     let filterMap filter map xs =
         [ for x in xs do
@@ -1522,9 +1537,30 @@ type IO.File with
       IO.File.WriteAllLines(fname, [|""|]) |> ignore
       [||]
 
-
 ////////
  
+let toMarkDownTableString headers (data: seq<#seq<string>>) =
+    // Helper function to format a row as a Markdown table row
+    let formatRow (row: seq<string>) =
+        row 
+        |> Seq.map (fun cell -> sprintf "| %s " cell) 
+        |> String.concat "" 
+        |> fun s -> s + "|"
+
+    // Format the header row
+    let headerRow = formatRow headers
+    // Create the separator row (e.g., | --- | --- | --- |)
+    let separatorRow = 
+        headers 
+        |> Seq.map (fun _ -> "| --- ") 
+        |> String.concat "" 
+        |> fun s -> s + "|"
+
+    // Format all data rows
+    let dataRows = data |> Seq.map formatRow |> String.concat "\n"
+    // Combine header, separator, and data rows into the final Markdown table
+    sprintf "%s\n%s\n%s" headerRow separatorRow dataRows
+
 
 let tohtmlTableString headers d =
     let entryFormat horD xs = xs |> Seq.map (fun x -> sprintf "<t%s>%s</t%s>" horD x horD) |> String.joinWith String.newLine
@@ -1559,7 +1595,6 @@ let cleanURLofHash str =
 let getUrlPath(url:string) =
   let uloc = url.LastIndexOf '/'
   let q = url.LastIndexOf '?'
-
   if q <> -1 then url.[..q-1] + "/" else url.[..uloc]
 
 let getUrlRoot(url:string) =
@@ -1601,25 +1636,31 @@ type Timed<'T> =
     ElapsedTotal: TimeSpan 
     ElapsedTimes : TimeSpan list}
 
-//creates timing with first execution skipped
-let timeThis n f =
+let timeThisWithSetup n setup f =
     let sw = Diagnostics.Stopwatch()
+
+    let timedRun () =
+        setup ()
+        sw.Restart()
+        let y = f ()
+        sw.Stop()
+        y, sw.Elapsed
 
     let rec loop c (y, ts) =
         if c = 0 then
             { Result = y
-              ElapsedTotal = Seq.reduce (+) ts
+              ElapsedTotal = ts |> List.fold (+) TimeSpan.Zero
               ElapsedTimes = ts }
         else
-            sw.Restart()
-            let y = f ()
-            sw.Stop()
-            loop (c - 1) (y, sw.Elapsed :: ts)
+            let y, elapsed = timedRun ()
+            loop (c - 1) (y, elapsed :: ts)
 
-    sw.Restart()
-    let y = f ()
-    sw.Stop()
+    let y, _ = timedRun ()
     loop (n - 1) (y, [])
+
+//creates timing with first execution skipped
+let timeThis n f =
+    timeThisWithSetup n ignore f
      
 type TimedBuilder(?nIters, ?skipFirst) =
     let skipfirst = defaultArg skipFirst true

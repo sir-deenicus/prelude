@@ -3,6 +3,44 @@
 open Prelude.Common
 open Prelude.Math
 
+[<RequireQualifiedAccess>]
+module Pareto =
+    
+    let findFrontier isDominated (points: _ seq) =
+        points 
+        |> Seq.filter (fun point1 ->
+            not (points |> Seq.exists (fun point2 ->
+                point1 <> point2 && isDominated point1 point2)))
+    
+    let calculateRanks isDominated (points: _ seq) =
+        let rec assignRanks remainingPoints currentRank acc =
+            match remainingPoints with
+            | [] -> acc
+            | _ -> 
+                let frontier = findFrontier isDominated remainingPoints            
+                // Add current frontier to accumulator with current rank
+                let newAcc = 
+                    (frontier 
+                    |> Seq.toList
+                    |> List.map (fun m -> m, currentRank)) :: acc
+                
+                // Remove frontier models from remaining set
+                let newRemaining = 
+                    remainingPoints 
+                    |> List.filter (fun m -> not (frontier |> Seq.exists ((=) m)))
+                  
+                assignRanks newRemaining (currentRank + 1) newAcc
+        
+        assignRanks (Seq.toList points) 1 []
+        |> List.concat
+        |> List.sortBy snd
+    
+    let compactParetoEfficiency paretoRanks =
+        paretoRanks  
+        |> List.groupBy snd
+        |> List.sortBy fst 
+        |> List.map (fun (rank, points) -> rank, points |> List.map fst)
+    
 module TextHistogram =
     let inline genericHistogram tostring toFloat len dat =
         let d = Seq.toArray dat

@@ -187,6 +187,9 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>() =
         let overwrite = defaultArg overwriteWeight true 
         if not (edges.ContainsKey node1) then 
             edges.Add(node1, Dict())
+
+        if not (edges.ContainsKey node2) then 
+            edges.Add(node2, Dict())
          
         let connectedsToNode1 = edges[node1]
         
@@ -744,12 +747,15 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
         let contained = edges.ContainsKey s
         if not contained then edges.Add(s, Dict())
         contained
- 
+    
     member g.AddEdge(v0, v1, w, ?overwrite) = 
         let shouldOverwrite = defaultArg overwrite true
 
         if not (edges.ContainsKey v0) then
             edges.Add(v0, Dict())
+
+        if not(edges.ContainsKey v1) then
+            edges.Add(v1, Dict())
 
         edges[v0].ExpandElseAdd(v1, (fun w0 -> if shouldOverwrite then w else w0), w)
  
@@ -880,7 +886,8 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
     member g.GetEdgeWeight (v1, v2) = maybe { 
         let! es = edges.TryFind v1
         let! w = es.TryFind v2
-        return w }
+        return w 
+    }
 
     member g.ContainsEdge (v1, v2) = maybe { 
         let! elist0 = edges.TryFind v1
@@ -996,6 +1003,9 @@ type DirectedMultiGraph<'a, 'w when 'a: equality>() =
    member g.AddEdge(v0, v1, w) =  
         if not (edges.ContainsKey v0) then
             edges.Add(v0, Dict())
+
+        if not (edges.ContainsKey v1) then
+            edges.Add(v1, Dict())
 
         let outgoingEdges = edges[v0]
         match outgoingEdges.TryFind v1 with
@@ -1168,6 +1178,9 @@ type DirectedGraph<'a when 'a : equality and 'a : comparison>() =
     member g.AddEdge(node1,node2) =  
         if not (edges.ContainsKey node1) then
             edges.Add(node1, Hashset())
+        if not (edges.ContainsKey node2) then 
+            edges.Add(node2, Hashset())
+            
         edges[node1].Add node2
 
     member g.AddEdges (edges: _ seq) = 

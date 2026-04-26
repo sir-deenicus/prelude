@@ -75,6 +75,18 @@ let rec depthFirstInsert f node =
             | [] -> Empty
             | tree -> Branch(n, tree)
             
+/// <summary>
+/// Performs a depth-first mapping over a tree structure, applying the given function to each node value.
+/// </summary>
+/// <param name="f">The mapping function to apply to each node value</param>
+/// <returns>A new tree with the mapping function applied to all node values</returns>
+/// <example>
+/// <code>
+/// let tree = Branch(1, [Node(2); Node(3)])
+/// let doubled = depthFirstMap (fun x -> x * 2) tree
+/// Results in: Branch(2, [Node(4); Node(6)])
+/// </code>
+/// </example>                
 let rec depthFirstMap f =
     function
     | Node(n) -> Node(f n)
@@ -83,12 +95,25 @@ let rec depthFirstMap f =
         let nodes' = nodes |> List.map (depthFirstMap f)
         Branch(f n, nodes')
 
-let rec depthFirstMapEx branchNodemap nodemap =
+/// <summary>
+/// Performs a depth-first mapping over a tree structure with separate mapping functions for branch and leaf nodes.
+/// </summary>
+/// <param name="branchNodemap">The mapping function to apply to branch node values</param>
+/// <param name="nodemap">The mapping function to apply to leaf node values</param>
+/// <returns>A new tree with the mapping functions applied to respective node values</returns>
+/// <example>
+/// <code>
+/// let tree = Branch(1, [Node(2); Node(3)])
+/// let result = depthFirstMapBranchLeaf (fun x -> x * 3) (fun x -> x * 2) tree
+/// Results in: Branch(3, [Node(4); Node(6)])
+/// </code>
+/// </example>
+let rec depthFirstMapBranchLeaf branchNodemap nodemap =
     function
     | Node(n) -> Node(nodemap n)
     | Empty -> Empty
     | Branch(n, nodes) ->
-        let nodes' = nodes |> List.map (depthFirstMapEx branchNodemap nodemap)
+        let nodes' = nodes |> List.map (depthFirstMapBranchLeaf branchNodemap nodemap)
         Branch(branchNodemap n, nodes')
 
 let rec depthFirstMapBranches f =

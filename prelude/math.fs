@@ -386,6 +386,14 @@ let roundSig r x =
         (round (max 0 (r-1)) x')/pten
     else round r x
 
+let significantFiguresStr (n: int) (value: float): string =
+    if value = 0.0 then "0." + String.replicate (n - 1) "0"
+    else
+        let orderOfMagnitude = Math.Floor(Math.Log10(Math.Abs(value)))
+        let scale = Math.Pow(10.0, float(n - 1) - orderOfMagnitude)
+        let roundedValue = Math.Round(value * scale) / scale
+        roundedValue.ToString("G" + n.ToString())
+
 ///Same as log10bucket except it clamps with a provided function
 let log10bucketAux clamp x =
     if x = 0. then 0.
