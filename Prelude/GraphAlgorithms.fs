@@ -469,7 +469,15 @@ type GraphAlgorithms() =
         |> Array.map (fun v -> GraphAlgorithms.extractShortestPathDijkstra id (paths, v))
         
     static member private shortOrLongestPath comparer seedvalue (order:'a[]) (g:IWeightedGraph<'a,_>) (s:'a) =
-        if not g.IsDirected || (Option.defaultValue true g.HasCycles) then failwith "Not a DAG"
+        let hasCycles =
+            match g.HasCycles with
+            | Some hasCycles -> hasCycles
+            | None ->
+                match GraphAlgorithms.isCyclic g with
+                | NotCyclic -> false
+                | IsCyclic _ -> true
+
+        if not g.IsDirected || hasCycles then failwith "Not a DAG"
         let subpath = Array.skipWhile ((<>) s) order
         let d = Array.map (fun n -> n, seedvalue) subpath |> Dict.ofSeq
         d[s] <- 0.

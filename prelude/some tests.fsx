@@ -1,9 +1,10 @@
 ﻿#time "on"
 #nowarn "1125"
  
-#r @"C:\Users\cybernetic\.nuget\packages\dictionaryslim\1.0.0\lib\netstandard2.1\DictionarySlim.dll"
+#I @"..\..\DictionarySlim\bin\Release\netstandard2.1"
+#r "DictionarySlim.dll"
 #r @"bin\Debug\net5\Prelude.dll"
- 
+
 open Prelude.Math
 open System
 open Prelude.Common
@@ -72,11 +73,8 @@ for KeyValue(k,sq) in kv do
     for i in 0..sq.Count - 1 do sq[i] <- sq[i] * 2
 
 kv
-let proc = System.Diagnostics.Process.GetProcessesByName("explorer")
-
-for p in proc do p.Kill()
 //get current assembly, load dagre-template text file 
-let assembly =  System.Reflection.Assembly.LoadFrom("bin/Release/netstandard2.1/Prelude.dll")
+let assembly = typeof<DirectedGraph<int>>.Assembly
 
 let template = assembly.GetManifestResourceStream("Prelude.dagre-template.txt")
 //read stream bytes
@@ -255,7 +253,8 @@ g0.AddEdge("Y", "D",1. ) |> ignore
 g0.ComputeReverseIndex()  
 disp g0
 
-GraphAlgorithms.removeCycles gd2
+GraphAlgorithms.removeCycles(gd2, false)
+|> ignore
 
 disp g0
 GraphAlgorithms.getNeighbors(g0, "F", 4)
@@ -336,6 +335,13 @@ let commaNumber (ToString str) =
 
 open Prelude.Math.Stats
 
+let expectFailure label f =
+    try
+        f () |> ignore
+        printfn "Expected failure for %s, but the call succeeded." label
+    with ex ->
+        printfn "Expected failure for %s: %s" label ex.Message
+
 let dat = [2.,6.; 3.,8. ;12.,9.;5.,2.;16.,2.] 
 
 dat |> List.fold online_covariance (0.,0.,0.,0.) 
@@ -353,8 +359,7 @@ Array.collapseCols
         [|"A" ; "C"|]|]
     |> Array.map Seq.mode 
  
- 
-Array.splitEvenly 2 [|1..9|]
+expectFailure "Array.splitEvenly uneven input" (fun () -> Array.splitEvenly 2 [|1..9|])
 
 let thevec = [|for i in 0..15 -> random.NextDouble(1.,20.)|]
 varianceAndMean thevec   
@@ -529,14 +534,20 @@ mDict.FoldKeyValues(0, fun s (DictKV(k, v)) -> s + k + v) = 12
 ///////Testing Reducers /////////
 //Example - wordcount
 
-let lines = System.IO.File.ReadAllLines(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments) + "\\fhack.txt")
-timeThis 100 (fun () ->
-    let c =
-        lines
-        |> Reducer.toSeqReducer
-        |> Reducer.collect (fun line -> Reducer.toSeqReducer <| (line |> String.splitToWords))
-        |> Reducer.countBy id
-    c |> Seq.toArray) 
+let fhackPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments) + "\\fhack.txt"
+
+if System.IO.File.Exists fhackPath then
+    let lines = System.IO.File.ReadAllLines fhackPath
+    timeThis 100 (fun () ->
+        let c =
+            lines
+            |> Reducer.toSeqReducer
+            |> Reducer.collect (fun line -> Reducer.toSeqReducer <| (line |> String.splitToWords))
+            |> Reducer.countBy id
+        c |> Seq.toArray)
+    |> ignore
+else
+    printfn "Skipping reducer wordcount sample; file not found: %s" fhackPath
 // |> Reducer.groupBy id (fun _ -> 1) (fun (_, items) -> Seq.sum items)
 
 ///////////////
@@ -671,6 +682,50 @@ simpleHfsm.RegisterCase(
 |> ignore
 
 simpleHfsm.Post({ NextState = Working Step1; Mem = 0 })
+
+type FrameSliceState =
+    | Acquire
+    | Pathfind
+    | Move
+    | Done
+
+let frameSliced = SteppableStateMachineExec<FrameSliceState, int, unit>(Done)
+
+frameSliced.RegisterOutcome(
+    Acquire,
+    fun budget ->
+        printfn "Acquire slice: %d" budget
+        Yield { NextState = Pathfind; Mem = budget + 1 })
+
+frameSliced.Register(
+    Pathfind,
+    fun budget ->
+        printfn "Pathfind slice: %d" budget
+        { NextState = Move; Mem = budget + 1 })
+
+frameSliced.Register(
+    Move,
+    fun budget ->
+        printfn "Move slice: %d" budget
+        { NextState = Done; Mem = budget + 1 })
+
+let firstSlice = frameSliced.RunSingleStep({ NextState = Acquire; Mem = 0 })
+printfn "First slice stop = %A, pending = %A" firstSlice.StopReason firstSlice.PendingTransition
+
+let secondSlice = frameSliced.StepFor(1)
+printfn "Second slice stop = %A, pending = %A" secondSlice.StopReason secondSlice.PendingTransition
+
+let finalSlice = frameSliced.StepCurrent()
+printfn "Final slice stop = %A" finalSlice.StopReason
+
+let untilMove =
+    frameSliced.RunUntil(
+        { NextState = Pathfind; Mem = 10 },
+        function
+        | Some(Move, _) -> true
+        | _ -> false)
+
+printfn "RunUntil stop = %A, pending = %A" untilMove.StopReason untilMove.PendingTransition
 
 //////////////////////
 
