@@ -64,6 +64,55 @@ type GraphAlgorithms() =
             IsCyclic errorstate.Value
         else
             NotCyclic
+
+module private NeighborMessaging =
+    let traverse start getEdges getTarget shouldTraverse step initialState =
+        let visited = Hashset()
+        visited.Add start |> ignore
+
+        let rec send state current =
+            let mutable terminated = false
+
+            for edge in getEdges current do
+                if not terminated && shouldTraverse state current edge then
+                    let target = getTarget edge
+                    if visited.Add target then
+                        let nextState, terminate = step state current edge
+                        if terminate then
+                            terminated <- true
+                        else
+                            terminated <- send nextState target
+
+            terminated
+
+        send initialState start |> ignore
+
+    let traverseAsync start getEdges getTarget shouldTraverse step initialState =
+        let visited = Hashset()
+        visited.Add start |> ignore
+
+        let rec send state current =
+            async {
+                let mutable terminated = false
+
+                for edge in getEdges current do
+                    if not terminated && shouldTraverse state current edge then
+                        let target = getTarget edge
+                        if visited.Add target then
+                            let! nextState, terminate = step state current edge
+                            if terminate then
+                                terminated <- true
+                            else
+                                let! childTerminated = send nextState target
+                                terminated <- childTerminated
+
+                return terminated
+            }
+
+        async {
+            let! _ = send initialState start
+            return ()
+        }
         
 
 type UndirectedGraph<'a when 'a: equality and 'a: comparison>() = 
@@ -143,16 +192,24 @@ type UndirectedGraph<'a when 'a: equality and 'a: comparison>() =
         |> Seq.toArray
 
     /// <summary>
-    /// Sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `state` to neighbors of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighbors (state:'b, v, f) =
-        let neighbors = g.GetEdges v 
-        for node in neighbors do
-            let msg', terminate = f state (v, node)
-            if terminate then () else g.SendMessageToNeighbors(msg', node, f) 
+        NeighborMessaging.traverse v g.GetEdges id (fun _ _ _ -> true) (fun currentState current node ->
+            f currentState (current, node)) state
+
+    /// <summary>
+    /// Asynchronously sends a message `state` to neighbors of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToNeighborsAsync (state:'b, v, f) =
+        NeighborMessaging.traverseAsync v g.GetEdges id (fun _ _ _ -> true) (fun currentState current node ->
+            async { return f currentState (current, node) }) state
      
     member g.ContainsNode v = edges.ContainsKey v
 
@@ -372,36 +429,28 @@ type WeightedGraph<'a when 'a: equality and 'a: comparison>() =
         edgeWeights[struct (vertless, vertHigher)]
 
     /// <summary>
-    /// Sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `state` to neighbors of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
     /// <param name="n">The node to send the message from</param>
     /// <param name = "filter">A function that takes the current state, the current node and the current targeted node and returns a boolean indicating whether to send the message to the targeted node.</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighbors (state:'b, n, filter, f) =
-        let nodes = g.GetEdges n 
-        for (node, weight) in nodes do
-            if filter (state, n, node) then 
-                let msg', terminate = f state (n, node, weight)
-                if terminate then () else g.SendMessageToNeighbors (msg', node, filter, f)
+        NeighborMessaging.traverse n g.GetEdges fst (fun currentState current (node, _) ->
+            filter (currentState, current, node)) (fun currentState current (node, weight) ->
+                f currentState (current, node, weight)) state
 
     member g.SendMessageToNeighbors (state:'b, n, f) = g.SendMessageToNeighbors (state, n, (fun _ -> true), f)
 
     /// <summary>
-    /// Asynchronously sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `state` to neighbors of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighborsAsync (state:'b, v, f) =
-        async {
-            let nodes = g.GetEdges v 
-            for (node, weight) in nodes do
-                let! msg', terminate = async {return f state (v, node, weight)}
-                if terminate then () 
-                do! g.SendMessageToNeighborsAsync (msg', node, f)
-                return ()
-        }  
+        NeighborMessaging.traverseAsync v g.GetEdges fst (fun _ _ _ -> true) (fun currentState current (node, weight) ->
+            async { return f currentState (current, node, weight) }) state
 
     member g.ContainsEdge (v1, v2) =
         let (n1,n2) = Pair.lessToLeft (v1, v2)

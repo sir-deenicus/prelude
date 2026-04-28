@@ -289,6 +289,278 @@ GraphAlgorithms.shortestPathDAG(gd2.ToWeightedGraph(), order, "U")
 |> snd 
 |> GraphAlgorithms.readOffPath "Y"   
 
+let inline expectNear label expected actual =
+    if abs (expected - actual) > 1e-9 then
+        failwithf "%s expected %f but got %f" label expected actual
+
+let expectNegativeCycle label result =
+    match result with
+    | Error (NegativeWeightCycle _) -> ()
+    | Ok value -> failwithf "%s expected NegativeWeightCycle but got %A" label value
+
+let expectEqual label expected actual =
+    if expected <> actual then
+        failwithf "%s expected %A but got %A" label expected actual
+
+let expectTrace label expected (trace: ResizeArray<_>) =
+    expectEqual label expected (List.ofSeq trace)
+
+let negativeWeightGraph = WeightedDirectedGraph<string>()
+for node in ["S"; "A"; "B"; "T"] do
+    negativeWeightGraph.AddNode node |> ignore
+negativeWeightGraph.AddEdge("S", "A", 2.) |> ignore
+negativeWeightGraph.AddEdge("S", "B", 5.) |> ignore
+negativeWeightGraph.AddEdge("A", "B", -4.) |> ignore
+negativeWeightGraph.AddEdge("A", "T", 5.) |> ignore
+negativeWeightGraph.AddEdge("B", "T", 2.) |> ignore
+
+let negativeWeightPaths =
+    match GraphAlgorithms.bellmanFordsShortestPath(negativeWeightGraph, "S", "T") with
+    | Ok paths -> paths
+    | Error err -> failwithf "Negative weight graph should not fail: %A" err
+
+let negativeWeightDists, _ = negativeWeightPaths
+expectNear "Bellman-Ford target distance with negative weights" 0. negativeWeightDists["T"]
+
+match GraphAlgorithms.shortestPathBellmanFord(negativeWeightGraph, "S", "T") with
+| Ok ["S"; "A"; "B"; "T"] -> ()
+| Ok path -> failwithf "Unexpected Bellman-Ford path for negative-weight graph: %A" path
+| Error err -> failwithf "Negative weight graph should not fail: %A" err
+
+let negativeCycleGraph = WeightedDirectedGraph<string>()
+for node in ["S"; "A"; "B"; "T"] do
+    negativeCycleGraph.AddNode node |> ignore
+negativeCycleGraph.AddEdge("S", "A", 1.) |> ignore
+negativeCycleGraph.AddEdge("A", "B", 1.) |> ignore
+negativeCycleGraph.AddEdge("B", "A", -3.) |> ignore
+negativeCycleGraph.AddEdge("B", "T", 1.) |> ignore
+
+GraphAlgorithms.bellmanFordsShortestPath(negativeCycleGraph, "S")
+|> expectNegativeCycle "Single-source Bellman-Ford should detect reachable negative cycles"
+
+GraphAlgorithms.bellmanFordsShortestPath(negativeCycleGraph, "S", "T")
+|> expectNegativeCycle "Target Bellman-Ford should detect negative cycles that can reach the target"
+
+GraphAlgorithms.shortestPathBellmanFord(negativeCycleGraph, "S", "T")
+|> expectNegativeCycle "Shortest-path Bellman-Ford wrapper should surface target-relevant negative cycles"
+
+let offTargetNegativeCycleGraph = WeightedDirectedGraph<string>()
+for node in ["S"; "A"; "B"; "T"] do
+    offTargetNegativeCycleGraph.AddNode node |> ignore
+offTargetNegativeCycleGraph.AddEdge("S", "T", 2.) |> ignore
+offTargetNegativeCycleGraph.AddEdge("S", "A", 1.) |> ignore
+offTargetNegativeCycleGraph.AddEdge("A", "B", 1.) |> ignore
+offTargetNegativeCycleGraph.AddEdge("B", "A", -3.) |> ignore
+
+GraphAlgorithms.bellmanFordsShortestPath(offTargetNegativeCycleGraph, "S")
+|> expectNegativeCycle "Single-source Bellman-Ford should still fail when a reachable negative cycle exists off target"
+
+let offTargetPaths =
+    match GraphAlgorithms.bellmanFordsShortestPath(offTargetNegativeCycleGraph, "S", "T") with
+    | Ok paths -> paths
+    | Error err -> failwithf "Target Bellman-Ford should ignore negative cycles that cannot reach the target: %A" err
+
+let offTargetDists, _ = offTargetPaths
+expectNear "Bellman-Ford target distance should stay finite when the negative cycle is off target" 2. offTargetDists["T"]
+
+match GraphAlgorithms.shortestPathBellmanFord(offTargetNegativeCycleGraph, "S", "T") with
+| Ok ["S"; "T"] -> ()
+| Ok path -> failwithf "Unexpected Bellman-Ford path for off-target negative-cycle graph: %A" path
+| Error err -> failwithf "Target Bellman-Ford should ignore negative cycles that cannot reach the target: %A" err
+
+let undirectedMessageGraph = UndirectedGraph<int>()
+undirectedMessageGraph.AddEdge(1, 2) |> ignore
+
+let undirectedSyncTrace = ResizeArray<int * int>()
+undirectedMessageGraph.SendMessageToNeighbors(0, 1, fun count (src, dst) ->
+    undirectedSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "Undirected graph sync message passing should stop globally" [(1, 2)] undirectedSyncTrace
+
+let undirectedAsyncTrace = ResizeArray<int * int>()
+undirectedMessageGraph.SendMessageToNeighborsAsync(0, 1, fun count (src, dst) ->
+    undirectedAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "Undirected graph async message passing should stop globally" [(1, 2)] undirectedAsyncTrace
+
+let weightedUndirectedMessageGraph = WeightedGraph<int>()
+weightedUndirectedMessageGraph.AddEdge(1, 2, 1.) |> ignore
+weightedUndirectedMessageGraph.AddEdge(1, 3, 1.) |> ignore
+
+let weightedUndirectedSyncTrace = ResizeArray<int * int>()
+weightedUndirectedMessageGraph.SendMessageToNeighbors(0, 1, fun count (src, dst, _weight) ->
+    weightedUndirectedSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "Weighted undirected graph sync message passing should stop globally" [(1, 2)] weightedUndirectedSyncTrace
+
+let weightedUndirectedAsyncTrace = ResizeArray<int * int>()
+weightedUndirectedMessageGraph.SendMessageToNeighborsAsync(0, 1, fun count (src, dst, _weight) ->
+    weightedUndirectedAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "Weighted undirected graph async message passing should stop globally" [(1, 2)] weightedUndirectedAsyncTrace
+
+let weightedDirectedChildrenGraph = WeightedDirectedGraph<int>()
+weightedDirectedChildrenGraph.AddEdge(1, 2, 1.) |> ignore
+weightedDirectedChildrenGraph.AddEdge(1, 3, 1.) |> ignore
+
+let weightedDirectedChildrenSyncTrace = ResizeArray<int * int>()
+weightedDirectedChildrenGraph.SendMessageToChildren(0, 1, fun count (src, dst, _weight) ->
+    weightedDirectedChildrenSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "Weighted directed graph sync child message passing should stop globally" [(1, 2)] weightedDirectedChildrenSyncTrace
+
+let weightedDirectedChildrenAsyncTrace = ResizeArray<int * int>()
+weightedDirectedChildrenGraph.SendMessageToChildrenAsync(0, 1, fun count (src, dst, _weight) ->
+    weightedDirectedChildrenAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "Weighted directed graph async child message passing should stop globally" [(1, 2)] weightedDirectedChildrenAsyncTrace
+
+let weightedDirectedParentsGraph = WeightedDirectedGraph<int>()
+weightedDirectedParentsGraph.AddEdge(1, 3, 1.) |> ignore
+weightedDirectedParentsGraph.AddEdge(2, 3, 1.) |> ignore
+
+let weightedDirectedParentsSyncTrace = ResizeArray<int * int>()
+weightedDirectedParentsGraph.SendMessageToParents(0, 3, fun count (src, dst, _weight) ->
+    weightedDirectedParentsSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "Weighted directed graph sync parent message passing should stop globally" [(3, 1)] weightedDirectedParentsSyncTrace
+
+let weightedDirectedParentsAsyncTrace = ResizeArray<int * int>()
+weightedDirectedParentsGraph.SendMessageToParentsAsync(0, 3, fun count (src, dst, _weight) ->
+    weightedDirectedParentsAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "Weighted directed graph async parent message passing should stop globally" [(3, 1)] weightedDirectedParentsAsyncTrace
+
+let weightedDirectedNeighborsGraph = WeightedDirectedGraph<int>()
+weightedDirectedNeighborsGraph.AddEdge(1, 2, 1.) |> ignore
+
+let weightedDirectedNeighborsSyncTrace = ResizeArray<int * int>()
+weightedDirectedNeighborsGraph.SendMessageToNeighbors(0, 1, fun count (src, dst, _weight) ->
+    weightedDirectedNeighborsSyncTrace.Add(src, dst)
+    let nextCount = count + 1
+    nextCount, nextCount >= 6)
+expectTrace "Weighted directed graph sync neighbor message passing should not bounce" [(1, 2)] weightedDirectedNeighborsSyncTrace
+
+let weightedDirectedNeighborsAsyncTrace = ResizeArray<int * int>()
+weightedDirectedNeighborsGraph.SendMessageToNeighborsAsync(0, 1, fun count (src, dst, _weight) ->
+    weightedDirectedNeighborsAsyncTrace.Add(src, dst)
+    let nextCount = count + 1
+    nextCount, nextCount >= 6)
+|> Async.RunSynchronously
+expectTrace "Weighted directed graph async neighbor message passing should not bounce" [(1, 2)] weightedDirectedNeighborsAsyncTrace
+
+let generalDirectedChildrenGraph = GeneralDirectedGraph<int, float>()
+generalDirectedChildrenGraph.AddEdge(1, 2, 1.) |> ignore
+generalDirectedChildrenGraph.AddEdge(1, 3, 1.) |> ignore
+
+let generalDirectedChildrenSyncTrace = ResizeArray<int * int>()
+generalDirectedChildrenGraph.SendMessageToChildren(0, 1, fun count (src, dst, _weight) ->
+    generalDirectedChildrenSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "General directed graph sync child message passing should stop globally" [(1, 2)] generalDirectedChildrenSyncTrace
+
+let generalDirectedChildrenAsyncTrace = ResizeArray<int * int>()
+generalDirectedChildrenGraph.SendMessageToChildrenAsync(0, 1, fun count (src, dst, _weight) ->
+    generalDirectedChildrenAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "General directed graph async child message passing should stop globally" [(1, 2)] generalDirectedChildrenAsyncTrace
+
+let generalDirectedParentsGraph = GeneralDirectedGraph<int, float>()
+generalDirectedParentsGraph.AddEdge(1, 3, 1.) |> ignore
+generalDirectedParentsGraph.AddEdge(2, 3, 1.) |> ignore
+
+let generalDirectedParentsSyncTrace = ResizeArray<int * int>()
+generalDirectedParentsGraph.SendMessageToParents(0, 3, fun count (src, dst, _weight) ->
+    generalDirectedParentsSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "General directed graph sync parent message passing should stop globally" [(3, 1)] generalDirectedParentsSyncTrace
+
+let generalDirectedParentsAsyncTrace = ResizeArray<int * int>()
+generalDirectedParentsGraph.SendMessageToParentsAsync(0, 3, fun count (src, dst, _weight) ->
+    generalDirectedParentsAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "General directed graph async parent message passing should stop globally" [(3, 1)] generalDirectedParentsAsyncTrace
+
+let generalDirectedNeighborsGraph = GeneralDirectedGraph<int, float>()
+generalDirectedNeighborsGraph.AddEdge(1, 2, 1.) |> ignore
+
+let generalDirectedNeighborsSyncTrace = ResizeArray<int * int>()
+generalDirectedNeighborsGraph.SendMessageToNeighbors(0, 1, fun count src dst _weight ->
+    generalDirectedNeighborsSyncTrace.Add(src, dst)
+    let nextCount = count + 1
+    nextCount, nextCount >= 6)
+expectTrace "General directed graph sync neighbor message passing should not bounce" [(1, 2)] generalDirectedNeighborsSyncTrace
+
+let generalDirectedNeighborsAsyncTrace = ResizeArray<int * int>()
+generalDirectedNeighborsGraph.SendMessageToNeighborsAsync(0, 1, fun count (src, dst, _weight) ->
+    generalDirectedNeighborsAsyncTrace.Add(src, dst)
+    let nextCount = count + 1
+    nextCount, nextCount >= 6)
+|> Async.RunSynchronously
+expectTrace "General directed graph async neighbor message passing should not bounce" [(1, 2)] generalDirectedNeighborsAsyncTrace
+
+let compressedDirectedChildrenGraph = CompressedDirectedGraph<int, float, int>(int)
+compressedDirectedChildrenGraph.AddEdge(1, 2, 1.) |> ignore
+compressedDirectedChildrenGraph.AddEdge(1, 3, 1.) |> ignore
+
+let compressedDirectedChildrenSyncTrace = ResizeArray<int * int>()
+compressedDirectedChildrenGraph.SendMessageToChildren(0, 1, fun count (src, dst, _weight) ->
+    compressedDirectedChildrenSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "Compressed directed graph sync child message passing should stop globally" [(1, 2)] compressedDirectedChildrenSyncTrace
+
+let compressedDirectedChildrenAsyncTrace = ResizeArray<int * int>()
+compressedDirectedChildrenGraph.SendMessageToChildrenAsync(0, 1, fun count (src, dst, _weight) ->
+    compressedDirectedChildrenAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "Compressed directed graph async child message passing should stop globally" [(1, 2)] compressedDirectedChildrenAsyncTrace
+
+let compressedDirectedParentsGraph = CompressedDirectedGraph<int, float, int>(int, true)
+compressedDirectedParentsGraph.AddEdge(1, 3, 1.) |> ignore
+compressedDirectedParentsGraph.AddEdge(2, 3, 1.) |> ignore
+
+let compressedDirectedParentsSyncTrace = ResizeArray<int * int>()
+compressedDirectedParentsGraph.SendMessageToParents(0, 3, fun count (src, dst, _weight) ->
+    compressedDirectedParentsSyncTrace.Add(src, dst)
+    count + 1, true)
+expectTrace "Compressed directed graph sync parent message passing should stop globally" [(3, 1)] compressedDirectedParentsSyncTrace
+
+let compressedDirectedParentsAsyncTrace = ResizeArray<int * int>()
+compressedDirectedParentsGraph.SendMessageToParentsAsync(0, 3, fun count (src, dst, _weight) ->
+    compressedDirectedParentsAsyncTrace.Add(src, dst)
+    count + 1, true)
+|> Async.RunSynchronously
+expectTrace "Compressed directed graph async parent message passing should stop globally" [(3, 1)] compressedDirectedParentsAsyncTrace
+
+let compressedDirectedNeighborsGraph = CompressedDirectedGraph<int, float, int>(int)
+compressedDirectedNeighborsGraph.AddEdge(1, 2, 1.) |> ignore
+
+let compressedDirectedNeighborsSyncTrace = ResizeArray<int * int>()
+compressedDirectedNeighborsGraph.SendMessageToNeighbors(0, 1, fun count (src, dst, _weight) ->
+    compressedDirectedNeighborsSyncTrace.Add(src, dst)
+    let nextCount = count + 1
+    nextCount, nextCount >= 6)
+expectTrace "Compressed directed graph sync neighbor message passing should not bounce" [(1, 2)] compressedDirectedNeighborsSyncTrace
+
+let compressedDirectedNeighborsAsyncTrace = ResizeArray<int * int>()
+compressedDirectedNeighborsGraph.SendMessageToNeighborsAsync(0, 1, fun count (src, dst, _weight) ->
+    compressedDirectedNeighborsAsyncTrace.Add(src, dst)
+    let nextCount = count + 1
+    nextCount, nextCount >= 6)
+|> Async.RunSynchronously
+expectTrace "Compressed directed graph async neighbor message passing should not bounce" [(1, 2)] compressedDirectedNeighborsAsyncTrace
+
+let compressedDirectedInEdgesGraph = CompressedDirectedGraph<int, float, int>(int, true)
+compressedDirectedInEdgesGraph.AddEdge(4, 5, 2.5) |> ignore
+expectEqual "Compressed directed graph in-edges should preserve reverse lookup" [|(4, 5)|] (compressedDirectedInEdgesGraph.InEdges 5)
+
 
 let t = graphToTree gd ("C")
 

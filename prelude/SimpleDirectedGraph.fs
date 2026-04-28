@@ -5,6 +5,55 @@ open System
 open Prelude.Collections.FibonacciHeap
 open Prelude.SimpleGraphs
 open DictionarySlim
+
+module private DirectedNeighborMessaging =
+    let traverse start getEdges getTarget step initialState =
+        let visited = Hashset()
+        visited.Add start |> ignore
+
+        let rec send state current =
+            let mutable terminated = false
+
+            for edge in getEdges current do
+                if not terminated then
+                    let target = getTarget edge
+                    if visited.Add target then
+                        let nextState, terminate = step state current edge
+                        if terminate then
+                            terminated <- true
+                        else
+                            terminated <- send nextState target
+
+            terminated
+
+        send initialState start |> ignore
+
+    let traverseAsync start getEdges getTarget step initialState =
+        let visited = Hashset()
+        visited.Add start |> ignore
+
+        let rec send state current =
+            async {
+                let mutable terminated = false
+
+                for edge in getEdges current do
+                    if not terminated then
+                        let target = getTarget edge
+                        if visited.Add target then
+                            let! nextState, terminate = step state current edge
+                            if terminate then
+                                terminated <- true
+                            else
+                                let! childTerminated = send nextState target
+                                terminated <- childTerminated
+
+                return terminated
+            }
+
+        async {
+            let! _ = send initialState start
+            return ()
+        }
  
 type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>() =
     let mutable edges = Dict<'a,Dict<'a, float>>()
@@ -62,100 +111,77 @@ type WeightedDirectedGraph<'a when 'a : equality and 'a : comparison>() =
         contained
 
     /// <summary>
-    /// Sends a message `msg` to child nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `msg` to child nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToChildren (msg:'b, v, f) =
-        let neighbors = g.GetEdges v 
-        for (node, weight) in neighbors do
-            let msg', terminate = f msg (v, node, weight)
-            if terminate then () else g.SendMessageToChildren(msg', node, f)
+        DirectedNeighborMessaging.traverse v g.GetEdges fst (fun state current (node, weight) ->
+            f state (current, node, weight)) msg
     
     /// <summary>
-    /// Asynchronously sends a state `state` to child nodes of node "v" via f, which takes a state, the current node, edge weight and the current targeted node and returns a new state and a boolean indicating whether to terminate the state passing.
+    /// Asynchronously sends a state `state` to child nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="state">The state to send</param>
     /// <param name="v">The node to send the state from</param>
     /// <param name="f">The function to apply to the state, f takes a state, the current node, edge weight and the current targeted node and returns a new state and a boolean indicating whether to terminate the state passing.</param>
     member g.SendMessageToChildrenAsync (state:'b, v, f) = 
-        async {
-            let neighbors = g.GetEdges v 
-            for (node, weight) in neighbors do
-                let! state', terminate = async { return f state (v, node, weight) }
-                if terminate then () 
-                else do! g.SendMessageToChildrenAsync(state', node, f)
-        }
+        DirectedNeighborMessaging.traverseAsync v g.GetEdges fst (fun currentState current (node, weight) ->
+            async { return f currentState (current, node, weight) }) state
         
     /// <summary>
-    /// Sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `msg` to parent nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToParents (msg:'b, v, f) =
-        let nodes = g.InEdgesWeights v 
-        for ((node,_), weight) in nodes do
-            let msg', terminate = f msg (v, node, weight)
-            if terminate then () else g.SendMessageToParents(msg', node, f)
+        DirectedNeighborMessaging.traverse v g.InEdgesWeights (fun ((node, _), _) -> node) (fun state current ((node, _), weight) ->
+            f state (current, node, weight)) msg
 
     /// <summary>
-    /// Asynchronously sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `msg` to parent nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToParentsAsync (msg:'b, v, f) =
-        async {
-            let nodes = g.InEdgesWeights v 
-            for ((node,_), weight) in nodes do
-                let! msg', terminate = async { return f msg (v, node, weight) }
-                if terminate then () 
-                else do! g.SendMessageToParentsAsync(msg', node, f)
-        }
+        DirectedNeighborMessaging.traverseAsync v g.InEdgesWeights (fun ((node, _), _) -> node) (fun state current ((node, _), weight) ->
+            async { return f state (current, node, weight) }) msg
     
     /// <summary>
-    /// Sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `state` to neighbors of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighbors (state:'b, v, f) =
-        let nodes =  
-            Array.append (g.GetEdges v) [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-            
-        for (node, weight) in nodes do
-            let msg', terminate = f state (v, node, weight)
-            if terminate then () else g.SendMessageToNeighbors(msg', node, f)    
+        let getNeighborEdges current =
+            Array.append (g.GetEdges current) [| for ((node, _), weight) in g.InEdgesWeights current -> node, weight |]
+
+        DirectedNeighborMessaging.traverse v getNeighborEdges fst (fun currentState current (node, weight) ->
+            f currentState (current, node, weight)) state
     
     /// <summary>
-    /// Asynchronously sends a message `state` to neighbors of node "v" via f, which takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `state` to neighbors of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="state">The initial state or message to be passed to the neighbors of node "v". This state can be updated with each recursive call based on the return value of function "f".</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighborsAsync (state:'b, v, f) =
-        async {
-            let nodes =  
-                Array.append (g.GetEdges v) [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-                
-            for (node, weight) in nodes do
-                let! msg', terminate = async { return f state (v, node, weight) }
-                if terminate then () 
-                else do! g.SendMessageToNeighborsAsync (msg', node, f)
-        }
+        let getNeighborEdges current =
+            Array.append (g.GetEdges current) [| for ((node, _), weight) in g.InEdgesWeights current -> node, weight |]
+
+        DirectedNeighborMessaging.traverseAsync v getNeighborEdges fst (fun currentState current (node, weight) ->
+            async { return f currentState (current, node, weight) }) state
 
 
     member g.InEdgesWeights v =
         [| for KeyValue(a, vs) in edges do
-               let w =
-                   match g.GetEdgeWeight(a, v) with
-                   | Some w -> w
-                   | None -> failwith "no weight" //should not happen
-
-               if vs.ContainsKey v then
-                   yield ((a, v), w) |]
+               match vs.TryFind v with
+               | Some w -> yield ((a, v), w)
+               | None -> () |]
 
     member g.Ins v = 
         [|for KeyValue(a, vs) in edges do
@@ -472,6 +498,8 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
             let count = keytype vertices.Count
             let index = &vertices.GetOrAddValueRef s
             index <- count 
+            let reverse = &rev_vertices.GetOrAddValueRef count
+            reverse <- s
             let graph = &edges.GetOrAddValueRef(count)
             graph <- DictionarySlim()
 
@@ -488,11 +516,24 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
                 for k in ins do
                     let _, es = edges.TryGetValue k
                     es.Remove i |> ignore
+
+                let hasOutEdges, outEdges = edges.TryGetValue i
+                if hasOutEdges then
+                    for KeyValue(child, _) in outEdges do
+                        let hasChildIns, childIns = inedges.TryGetValue child
+                        if hasChildIns then
+                            childIns.Remove i |> ignore
+
+                inedges.Remove i |> ignore
             else
                 for (KeyValue(_, es)) in edges do
                     if es.ContainsKey i then  
                         es.Remove i |> ignore 
-            edges.Remove i
+
+            edges.Remove i |> ignore
+            vertices.Remove v |> ignore
+            rev_vertices.Remove i |> ignore
+            true
         else false 
     
     member g.ClearIsolatedNodes() = 
@@ -584,6 +625,96 @@ type CompressedDirectedGraph<'a, 'b, 'keytype when 'a : equality and 'a : compar
             [| for (KeyValue(k, w)) in es ->
                 rev_vertices.TryGetValue k |> snd, w |]
         else Array.empty
+
+    /// <summary>
+    /// Sends a message `msg` to child nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="msg">The message to send</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToChildren(msg:'c, v, f) =
+        DirectedNeighborMessaging.traverse v g.GetEdges fst (fun state current (node, weight) ->
+            f state (current, node, weight)) msg
+
+    /// <summary>
+    /// Asynchronously sends a message `msg` to child nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="msg">The message to send</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToChildrenAsync(msg:'c, v, f) =
+        DirectedNeighborMessaging.traverseAsync v g.GetEdges fst (fun state current (node, weight) ->
+            async { return f state (current, node, weight) }) msg
+
+    /// <summary>
+    /// Sends a message `msg` to parent nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="msg">The message to send</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToParents(msg:'c, v, f) =
+        DirectedNeighborMessaging.traverse v g.InEdgesWeights (fun ((node, _), _) -> node) (fun state current ((node, _), weight) ->
+            f state (current, node, weight)) msg
+
+    /// <summary>
+    /// Asynchronously sends a message `msg` to parent nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="msg">The message to send</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToParentsAsync(msg:'c, v, f) =
+        DirectedNeighborMessaging.traverseAsync v g.InEdgesWeights (fun ((node, _), _) -> node) (fun state current ((node, _), weight) ->
+            async { return f state (current, node, weight) }) msg
+
+    /// <summary>
+    /// Sends a message `msg` to neighbor nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="msg">The message to send</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToNeighbors(msg:'c, v, f) =
+        let getNeighborEdges current =
+            Array.append (g.GetEdges current) [| for ((node, _), weight) in g.InEdgesWeights current -> node, weight |]
+
+        DirectedNeighborMessaging.traverse v getNeighborEdges fst (fun state current (node, weight) ->
+            f state (current, node, weight)) msg
+
+    /// <summary>
+    /// Asynchronously sends a message `msg` to neighbor nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
+    /// </summary>
+    /// <param name="msg">The message to send</param>
+    /// <param name="v">The node to send the message from</param>
+    /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
+    member g.SendMessageToNeighborsAsync(msg:'c, v, f) =
+        let getNeighborEdges current =
+            Array.append (g.GetEdges current) [| for ((node, _), weight) in g.InEdgesWeights current -> node, weight |]
+
+        DirectedNeighborMessaging.traverseAsync v getNeighborEdges fst (fun state current (node, weight) ->
+            async { return f state (current, node, weight) }) msg
+
+    member g.InEdgesWeights v =
+        let hasv, i = vertices.TryGetValue v
+        if hasv then
+            let parentKeys =
+                if maintainInEdges then
+                    let hasInEdges, ins = inedges.TryGetValue i
+                    if hasInEdges then Seq.toArray ins else Array.empty
+                else
+                    [| for KeyValue(parent, es) in edges do
+                        if es.ContainsKey i then
+                            yield parent |]
+
+            [| for parent in parentKeys do
+                let hasEdges, parentEdges = edges.TryGetValue parent
+                if hasEdges then
+                    let hasWeight, weight = parentEdges.TryGetValue i
+                    if hasWeight then
+                        yield ((rev_vertices.TryGetValue parent |> snd, v), weight) |]
+        else
+            Array.empty
+
+    member g.InEdges v =
+        g.InEdgesWeights v |> Array.map fst
     
     member g.Ins v =
         let hasv, i = vertices.TryGetValue v
@@ -769,91 +900,76 @@ type GeneralDirectedGraph<'a, 'w when 'a : equality and 'a : comparison>() =
         g
 
     /// <summary>
-    /// Sends a message `msg` to child nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `msg` to child nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToChildren(msg:'b, v, f) =
-        let neighbors = g.GetEdges v 
-        for (node, weight) in neighbors do
-            let msg', terminate = f msg (v, node, weight)
-            if terminate then () else g.SendMessageToChildren(msg', node, f)
+        DirectedNeighborMessaging.traverse v g.GetEdges fst (fun state current (node, weight) ->
+            f state (current, node, weight)) msg
 
     /// <summary>
-    /// Asynchronously sends a message `msg` to child nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `msg` to child nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToChildrenAsync(msg:'b, v, f) = 
-        async {
-            let neighbors = g.GetEdges v 
-            for (node, weight) in neighbors do
-                let! msg', terminate = async {return f msg (v, node, weight)}
-                if terminate then () 
-                else do! g.SendMessageToChildrenAsync(msg', node, f)
-        }  
+        DirectedNeighborMessaging.traverseAsync v g.GetEdges fst (fun state current (node, weight) ->
+            async { return f state (current, node, weight) }) msg
 
     /// <summary>
-    /// Sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `msg` to parent nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToParents(msg:'b, v, f) =
-        let nodes = g.InEdgesWeights v 
-        for ((node, _), weight) in nodes do
-            let msg', terminate = f msg (v, node, weight)
-            if terminate then () else g.SendMessageToParents(msg', node, f)
+        DirectedNeighborMessaging.traverse v g.InEdgesWeights (fun ((node, _), _) -> node) (fun state current ((node, _), weight) ->
+            f state (current, node, weight)) msg
 
     /// <summary>
-    /// Asynchronously sends a message `msg` to parent nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `msg` to parent nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToParentsAsync(msg:'b, v, f) =
-         async {
-            let nodes = g.InEdgesWeights v 
-            for ((node, _), weight) in nodes do
-                let! msg', terminate = async { return f msg (v, node, weight)}
-                if terminate then () 
-                else do! g.SendMessageToParentsAsync(msg', node, f)
-        }  
+        DirectedNeighborMessaging.traverseAsync v g.InEdgesWeights (fun ((node, _), _) -> node) (fun state current ((node, _), weight) ->
+            async { return f state (current, node, weight) }) msg
+
     /// <summary>
-    /// Sends a message `msg` to neighbor nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Sends a message `msg` to neighbor nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighbors (msg:'b, v, f) =
-        let nodes = g.GetEdges v
-        let allnodes = Array.append nodes [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-            
-        for (node, weight) in allnodes do
-            let msg', terminate = f msg v node weight
-            if terminate then () else g.SendMessageToNeighbors(msg', node, f)
+        let getNeighborEdges current =
+            Array.append (g.GetEdges current) [| for ((node, _), weight) in g.InEdgesWeights current -> node, weight |]
+
+        DirectedNeighborMessaging.traverse v getNeighborEdges fst (fun state current (node, weight) ->
+            f state current node weight) msg
 
     /// <summary>
-    /// Asynchronously sends a message `msg` to neighbor nodes of node "v" via f, which takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.
+    /// Asynchronously sends a message `msg` to neighbor nodes of node "v" via f. Traversal is depth-first, does not revisit nodes, and stops entirely when f requests termination.
     /// </summary>
     /// <param name="msg">The message to send</param>
     /// <param name="v">The node to send the message from</param>
     /// <param name="f">The function to apply to the message, f takes a message, the current node, edge weight and the current targeted node and returns a new message and a boolean indicating whether to terminate the message passing.</param>
     member g.SendMessageToNeighborsAsync (msg:'b, v, f) =
-        async {
-            let nodes = Array.append (g.GetEdges v) [|for ((u,_), w) in g.InEdgesWeights v -> u, w|]
-            for (node, weight) in nodes do
-                let! msg', terminate = async { return f msg (v, node, weight) }
-                if terminate then () 
-                else do! g.SendMessageToNeighborsAsync(msg', node, f)
-        } 
+        let getNeighborEdges current =
+            Array.append (g.GetEdges current) [| for ((node, _), weight) in g.InEdgesWeights current -> node, weight |]
+
+        DirectedNeighborMessaging.traverseAsync v getNeighborEdges fst (fun state current (node, weight) ->
+            async { return f state (current, node, weight) }) msg
     
     member g.InEdgesWeights v =
         [|for KeyValue(a, vs) in edges do
-            let w = match g.GetEdgeWeight(a, v) with Some w -> w | None -> failwith "no weight"
-            if vs.ContainsKey v then yield ((a, v), w) |]                
+            match vs.TryFind v with
+            | Some w -> yield ((a, v), w)
+            | None -> () |]                
 
     member g.Remove(v : 'a) =
         match (edges.TryFind v) with

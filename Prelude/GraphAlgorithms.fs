@@ -8,6 +8,7 @@ open Math
 open Prelude.Collections.FibonacciHeap
 
 type TopoSortError<'a> = NotDAG | Cyclic of 'a | UnExpectedError  
+type ShortestPathError<'a> = NegativeWeightCycle of 'a
 
 type SortDirection = Ascending | Descending 
    
@@ -178,6 +179,28 @@ module Graph =
                     if not (visited.Contains n) then
                         visited.Add n |> ignore
                         queue.Enqueue n  
+        result
+
+    let depthFirstSearch (g: IGraph<_>) stopcondition startNode =
+        let visited = Hashset()
+        let stack = Collections.Generic.Stack()
+
+        visited.Add startNode |> ignore
+        stack.Push startNode
+
+        let mutable stopSearch = false
+        let mutable result = None
+
+        while stack.Count > 0 && not stopSearch do
+            let node = stack.Pop()
+            if stopcondition node then
+                result <- Some node
+                stopSearch <- true
+            else
+                for n in Array.rev (g.GetNeighbors node) do
+                    if not (visited.Contains n) then
+                        visited.Add n |> ignore
+                        stack.Push n
         result
          
 
@@ -467,6 +490,19 @@ type GraphAlgorithms() =
         let paths = GraphAlgorithms.dijkstrasShortestPath (g, source)
         g.Nodes 
         |> Array.map (fun v -> GraphAlgorithms.extractShortestPathDijkstra id (paths, v))
+
+    static member shortestPathBellmanFord (g : IWeightedGraph<_, _>, source, target) =
+        match GraphAlgorithms.bellmanFordsShortestPath(g, source, target) with
+        | Ok paths -> Ok (GraphAlgorithms.extractShortestPathDijkstra fst (paths, target))
+        | Error err -> Error err
+
+    static member shortestPathsBellmanFord (g : IWeightedGraph<_, _>) source =
+        match GraphAlgorithms.bellmanFordsShortestPath(g, source) with
+        | Ok paths ->
+            g.Nodes
+            |> Array.map (fun v -> GraphAlgorithms.extractShortestPathDijkstra id (paths, v))
+            |> Ok
+        | Error err -> Error err
         
     static member private shortOrLongestPath comparer seedvalue (order:'a[]) (g:IWeightedGraph<'a,_>) (s:'a) =
         let hasCycles =
@@ -541,6 +577,83 @@ type GraphAlgorithms() =
                 false) (false)
         |> ignore
         dists, prev
+
+    static member private bellmanFordsShortestPathAux(g : IWeightedGraph<_, _>, source) =
+        let nodes =
+            let vs = g.Nodes
+            if Array.contains source vs then vs
+            else Array.append [| source |] vs
+
+        let dists = Dict.ofSeq [ source, 0. ]
+        let prev = Dict()
+        let queue = Collections.Generic.Queue()
+        let inQueue = Hashset()
+        let relaxCounts = Dict()
+        let negativeCycleNodes = Hashset()
+        let infinity = Double.PositiveInfinity
+        let nodeCount = max 1 nodes.Length
+
+        for node in nodes do
+            if node <> source then dists.Add(node, infinity)
+            prev.Add(node, None)
+            relaxCounts.Add(node, 0)
+
+        let enqueue node =
+            if not (inQueue.Contains node || negativeCycleNodes.Contains node) then
+                queue.Enqueue node
+                inQueue.Add node |> ignore
+
+        enqueue source
+
+        while queue.Count > 0 do
+            let node = queue.Dequeue()
+            inQueue.Remove node |> ignore
+
+            if dists[node] <> infinity then
+                for (neighbor, weight) in g.GetWeightedEdges node do
+                    let newDistance = dists[node] + weight
+                    if newDistance < dists[neighbor] then
+                        dists[neighbor] <- newDistance
+                        prev[neighbor] <- Some node
+
+                        let relaxCount = relaxCounts[neighbor] + 1
+                        relaxCounts[neighbor] <- relaxCount
+
+                        if relaxCount >= nodeCount then
+                            negativeCycleNodes.Add neighbor |> ignore
+                        else
+                            enqueue neighbor
+
+        (dists, prev), Seq.toArray negativeCycleNodes
+
+    static member bellmanFordsShortestPath(g : IWeightedGraph<_, _>, source, ?target) =
+        let paths, negativeCycleNodes = GraphAlgorithms.bellmanFordsShortestPathAux(g, source)
+
+        let relevantNegativeCycle =
+            match target with
+            | None -> Array.tryHead negativeCycleNodes
+            | Some targetNode ->
+                let reachableToTarget =
+                    let visited = Hashset()
+                    let queue = Collections.Generic.Queue()
+
+                    visited.Add targetNode |> ignore
+                    queue.Enqueue targetNode
+
+                    while queue.Count > 0 do
+                        let node = queue.Dequeue()
+                        for parent in g.Ins node do
+                            if not (visited.Contains parent) then
+                                visited.Add parent |> ignore
+                                queue.Enqueue parent
+
+                    visited
+
+                Array.tryFind reachableToTarget.Contains negativeCycleNodes
+
+        match relevantNegativeCycle with
+        | Some node -> Error (NegativeWeightCycle node)
+        | None -> Ok paths
 
     static member minimumSpanningTree(g : IWeightedGraph<_, _>, ?domax, ?NodePrioritization) =
         let dir =
