@@ -223,13 +223,46 @@ let rec countTreeNodesAndCollapseBelow depth n =
     | Empty -> 0, Empty
 
 //==================================== 
+/// <summary>
+/// Renders a tree as a multi-line string with branch guides.
+/// </summary>
+/// <param name="f">Converts each node value into text.</param>
+/// <returns>A formatted tree representation suitable for console output.</returns>
 let dispTree f =
-    foldTree ("", 0) 
-        (fun (s, n) -> s, n + 1)
-        (fun (s, i) n -> 
-            s + "\n" + String.replicate i " | " + " └──" + f n, i)
-        (fun n l ->
-            l |> List.fold (fun (s1, i1) (s2, i2) -> s1 + s2, max i1 i2) n)
+    let rec renderNode prefix isLast = function
+        | Empty -> []
+        | Node n ->
+            [prefix + (if isLast then "└── " else "├── ") + f n]
+        | Branch(n, nodes) ->
+            let line = prefix + (if isLast then "└── " else "├── ") + f n
+            let childPrefix = prefix + (if isLast then "    " else "│   ")
+            let children =
+                nodes
+                |> List.choose (function
+                    | Empty -> None
+                    | node -> Some node)
+            let lastIndex = children.Length - 1
+            let childLines =
+                children
+                |> List.mapi (fun index node -> renderNode childPrefix (index = lastIndex) node)
+                |> List.concat
+            line :: childLines
+
+    function
+    | Empty -> ""
+    | Node n -> f n
+    | Branch(n, nodes) ->
+        let children =
+            nodes
+            |> List.choose (function
+                | Empty -> None
+                | node -> Some node)
+        let lastIndex = children.Length - 1
+        let childLines =
+            children
+            |> List.mapi (fun index node -> renderNode "" (index = lastIndex) node)
+            |> List.concat
+        String.concat Environment.NewLine (f n :: childLines)
                 
 let graphToTreeWith prjfst getEdges (node : _) =
     let rec loop (visited : Set<_>) node =
