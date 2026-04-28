@@ -286,6 +286,39 @@ machine.RegisterOutcome(
 
 `StateMachineExec` is a wrapper over `SteppableStateMachineExec` with `'wait = unit`. If you do not need `Yield` or `Wait`, use `StateMachineExec` — it has the same engine with a simpler type surface.
 
+#### `fsm` handler authoring
+
+`SteppableStateMachineExec` also exposes a small computation expression for authoring step handlers that lower directly to `Continue`, `Yield`, and `Wait`.
+
+The CE threads the machine memory explicitly and compiles to the same handler shape used by `RegisterOutcome`:
+
+```fsharp
+machine.RegisterOutcome(
+    Acquire,
+    fsm {
+        do! Fsm.updateMem (fun mem -> { mem with Budget = mem.Budget - 1 })
+        let! mem = Fsm.getMem
+
+        if mem.Budget <= 0 then
+            return Fsm.waitFor OutOfBudget
+        elif mem.NeedsPause then
+            return Fsm.yieldTo Pathfind
+        else
+            return Fsm.continueWith Move
+    })
+```
+
+The available primitives are intentionally small:
+
+- `Fsm.getMem`
+- `Fsm.setMem nextMem`
+- `Fsm.updateMem f`
+- `Fsm.continueWith nextState`
+- `Fsm.yieldTo nextState`
+- `Fsm.waitFor waitReason`
+
+This is authoring syntax over the existing stepper, not a general coroutine runtime. The generated handler still returns exactly one `StepOutcome` for the current step, and the machine still resumes through the normal pending-transition and stepping APIs.
+
 ---
 
 ## Hierarchical State Machines (HFSMs)

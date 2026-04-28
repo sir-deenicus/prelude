@@ -229,6 +229,9 @@ Compatibility direction:
 - keep the current `StateMachineExec` surface as the default `RunToStable` wrapper
 - add the more explicit stepping API underneath or alongside it
 - keep the actor wrapper as an adapter over the same core rather than as the core itself
+- add a small `fsm` computation expression over the steppable handler shape so handler authors can write memory-threading, `Yield`, and `Wait` logic more declaratively without introducing a separate execution engine
+- the `fsm` computation expression lowers back to the existing `mem -> StepOutcome<'state,'mem,'wait>` shape, so the Phase 2 stepping architecture remains unchanged
+- if the `fsm` helper grows later, base that on authoring noise; only add convenience operations when repeated real handler patterns justify them, so the helper stays thinner than a general workflow DSL
 
 ## Phase 3: Introduce Fast Hierarchical Dispatch
 

@@ -13,6 +13,80 @@ type StepOutcome<'state, 'mem, 'wait> =
     | Yield of nextTransition: TransitionMsg<'state, 'mem>
     | Wait of waitReason: 'wait
 
+type FsmTerminal<'state, 'wait> =
+    | ContinueTo of nextState: 'state
+    | YieldTo of nextState: 'state
+    | WaitFor of waitReason: 'wait
+
+type FsmStep<'mem, 'a> =
+    | FsmStep of ('mem -> 'a * 'mem)
+
+module Fsm =
+    let inline private step f = FsmStep f
+
+    let getMem<'mem> : FsmStep<'mem, 'mem> =
+        step (fun mem -> mem, mem)
+
+    let setMem<'mem> (nextMem: 'mem) : FsmStep<'mem, unit> =
+        step (fun _ -> (), nextMem)
+
+    let updateMem<'mem> (f: 'mem -> 'mem) : FsmStep<'mem, unit> =
+        step (fun mem -> (), f mem)
+
+    let continueWith<'state, 'wait> (nextState: 'state) : FsmTerminal<'state, 'wait> =
+        ContinueTo nextState
+
+    let yieldTo<'state, 'wait> (nextState: 'state) : FsmTerminal<'state, 'wait> =
+        YieldTo nextState
+
+    let waitFor<'state, 'wait> (waitReason: 'wait) : FsmTerminal<'state, 'wait> =
+        WaitFor waitReason
+
+type FsmBuilder() =
+    member _.Return(value) =
+        FsmStep(fun mem -> value, mem)
+
+    member _.ReturnFrom(FsmStep step) =
+        FsmStep step
+
+    member _.Bind(FsmStep step, binder) =
+        FsmStep(fun mem ->
+            let value, nextMem = step mem
+            let (FsmStep nextStep) = binder value
+            nextStep nextMem)
+
+    member _.Zero() =
+        FsmStep(fun mem -> (), mem)
+
+    member _.Delay(f) =
+        FsmStep(fun mem ->
+            let (FsmStep step) = f ()
+            step mem)
+
+    member this.Combine(first, second) =
+        this.Bind(first, fun () -> second)
+
+    member this.While(guard, body) =
+        if not (guard ()) then this.Zero()
+        else this.Bind(body, fun () -> this.While(guard, body))
+
+    member this.For(sequence: seq<'a>, body) =
+        use enumerator = sequence.GetEnumerator()
+        this.While(
+            (fun () -> enumerator.MoveNext()),
+            this.Delay(fun () -> body enumerator.Current))
+
+    member _.Run(FsmStep step : FsmStep<'mem, FsmTerminal<'state, 'wait>>) : 'mem -> StepOutcome<'state, 'mem, 'wait> =
+        fun mem ->
+            let terminal, nextMem = step mem
+
+            match terminal with
+            | ContinueTo nextState -> Continue { NextState = nextState; Mem = nextMem }
+            | YieldTo nextState -> Yield { NextState = nextState; Mem = nextMem }
+            | WaitFor waitReason -> Wait waitReason
+
+let fsm = FsmBuilder()
+
 type ExecutionPolicy<'state, 'mem> =
     | RunToStable
     | MaxTransitions of int
