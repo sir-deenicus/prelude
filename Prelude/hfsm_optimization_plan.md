@@ -356,11 +356,13 @@ Cleanup/validation follow-up:
 
 - `hfsm_bench.fsx` now shares optimized-machine setup helpers so the Phase 5 examples read as one coherent usage instead of four repeated setup blocks
 - benchmark reruns after the cleanup pass stayed within the same overall range; latest rerun was actor exact `141.093 ms`, actor HFSM `144.698 ms`, optimized actor exact `76.793 ms`, optimized actor HFSM `114.198 ms`, optimized sync exact `71.153 ms`, optimized sync HFSM `128.467 ms`
+- after productizing the API into reusable definitions plus per-instance runtimes, the benchmark now also measures shared-definition instance creation directly; latest rerun created `10,000` optimized exact instances in `2.997 ms` avg and `10,000` optimized HFSM instances in `2.489 ms` avg
 
 Phase 5 completion status:
 
 - functionally, this phase is complete for the current objective
 - the specialized optimized core exists, the CE surface is usable, and we now have both actor and synchronous benchmark rows with corrected actor-side completion measurement
+- the shared-definition path is now also validated for large-NPC-style usage: one compiled behavior definition can cheaply spawn many per-NPC runtimes
 - any further work here is refinement or productization rather than a missing foundational piece
 
 Recommended close-out decision:

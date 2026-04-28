@@ -5,6 +5,7 @@
 #r @"bin\Debug\net5\Prelude.dll"
 
 open System
+open System.Collections.Generic
 open System.Threading
 open Prelude.Common
 open Prelude.Control
@@ -35,6 +36,7 @@ let benchStateKey = function
 
 let iterations = 200_000
 let samples = 30
+let npcInstances = 10_000
 
 let percentile percentileRank (sortedValues: float array) =
     let lastIndex = sortedValues.Length - 1
@@ -163,7 +165,7 @@ let exitMem status =
     | ReachedExit transition -> transition.Mem
     | stopReason -> invalidOp (sprintf "Expected ReachedExit, got %A" stopReason)
 
-let createOptimizedExactMachine maxCount =
+let createOptimizedExactDefinition maxCount =
     let ping count =
         if count >= maxCount then
             { NextState = Stop; Mem = count }
@@ -189,7 +191,7 @@ let createOptimizedExactMachine maxCount =
 
     machine
 
-let createOptimizedHfsmMachine maxCount =
+let createOptimizedHfsmDefinition maxCount =
     let stepParent state count =
         match state with
         | Parent child ->
@@ -213,29 +215,60 @@ let createOptimizedHfsmMachine maxCount =
 
     machine
 
+let optimizedExactDefinitions = Dictionary<int, OptimizedStateMachine<BenchState, BenchStateKey, int>>()
+let optimizedHfsmDefinitions = Dictionary<int, OptimizedStateMachine<BenchState, BenchStateKey, int>>()
+
+let getOptimizedExactDefinition maxCount =
+    match optimizedExactDefinitions.TryGetValue maxCount with
+    | true, machine -> machine
+    | _ ->
+        let machine = createOptimizedExactDefinition maxCount
+        optimizedExactDefinitions[maxCount] <- machine
+        machine
+
+let getOptimizedHfsmDefinition maxCount =
+    match optimizedHfsmDefinitions.TryGetValue maxCount with
+    | true, machine -> machine
+    | _ ->
+        let machine = createOptimizedHfsmDefinition maxCount
+        optimizedHfsmDefinitions[maxCount] <- machine
+        machine
+
 let runOptimizedActorExact maxCount =
-    createOptimizedExactMachine maxCount
+    getOptimizedExactDefinition maxCount
     |> fun machine -> machine.CreateInstance(startActor = true)
     |> fun instance -> instance.RunOnActor({ NextState = Ping; Mem = 0 })
     |> exitMem
 
 let runOptimizedSyncExact maxCount =
-    createOptimizedExactMachine maxCount
+    getOptimizedExactDefinition maxCount
     |> fun machine -> machine.CreateInstance()
     |> fun instance -> instance.Run({ NextState = Ping; Mem = 0 })
     |> exitMem
 
 let runOptimizedActorHfsm maxCount =
-    createOptimizedHfsmMachine maxCount
+    getOptimizedHfsmDefinition maxCount
     |> fun machine -> machine.CreateInstance(startActor = true)
     |> fun instance -> instance.RunOnActor({ NextState = Parent ChildPing; Mem = 0 })
     |> exitMem
 
 let runOptimizedSyncHfsm maxCount =
-    createOptimizedHfsmMachine maxCount
+    getOptimizedHfsmDefinition maxCount
     |> fun machine -> machine.CreateInstance()
     |> fun instance -> instance.Run({ NextState = Parent ChildPing; Mem = 0 })
     |> exitMem
+
+let runOptimizedExactInstanceCreation instanceCount =
+    let machine = getOptimizedExactDefinition iterations
+
+    for _ in 1..instanceCount do
+        machine.CreateInstance() |> ignore
+
+let runOptimizedHfsmInstanceCreation instanceCount =
+    let machine = getOptimizedHfsmDefinition iterations
+
+    for _ in 1..instanceCount do
+        machine.CreateInstance() |> ignore
 
 let results =
     [ bench (sprintf "Direct exact loop (%d transitions)" iterations) (fun () -> runDirectExact iterations |> ignore)
@@ -245,7 +278,9 @@ let results =
       bench (sprintf "Optimized actor exact dispatch (%d transitions)" iterations) (fun () -> runOptimizedActorExact iterations |> ignore)
       bench (sprintf "Optimized actor HFSM dispatch (%d transitions)" iterations) (fun () -> runOptimizedActorHfsm iterations |> ignore)
       bench (sprintf "Optimized sync exact dispatch (%d transitions)" iterations) (fun () -> runOptimizedSyncExact iterations |> ignore)
-      bench (sprintf "Optimized sync HFSM dispatch (%d transitions)" iterations) (fun () -> runOptimizedSyncHfsm iterations |> ignore) ]
+      bench (sprintf "Optimized sync HFSM dispatch (%d transitions)" iterations) (fun () -> runOptimizedSyncHfsm iterations |> ignore)
+      bench (sprintf "Create %d optimized exact instances" npcInstances) (fun () -> runOptimizedExactInstanceCreation npcInstances)
+      bench (sprintf "Create %d optimized HFSM instances" npcInstances) (fun () -> runOptimizedHfsmInstanceCreation npcInstances) ]
 
 printfn "HFSM benchmark baseline"
 printfn "samples: %d" samples
