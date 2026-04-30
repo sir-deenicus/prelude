@@ -5,11 +5,15 @@
     <Company />
     <Authors>Deen Abiola</Authors>
     <Description>Set of useful Fsharp utility functions.</Description>
-    <Version>2.0.21</Version>
+    <Version>2.1.0</Version>
     <PackageId>Prelude</PackageId>
     <AssemblyName>Prelude</AssemblyName>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild> 
     <RunPostBuildEvent>2</RunPostBuildEvent>
+    <GitHubPackagesOwner>sir-deenicus</GitHubPackagesOwner>
+    <GitHubPackagesSource>https://nuget.pkg.github.com/$(GitHubPackagesOwner)/index.json</GitHubPackagesSource>
+    <LocalPackageCache>C:\Users\cybernetic\Code\Packages\</LocalPackageCache>
+    <GitHubPackagesConfigPath>$(BaseIntermediateOutputPath)github-packages.nuget.config</GitHubPackagesConfigPath>
   </PropertyGroup> 
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|netstandard2.1|AnyCPU'">
     <DocumentationFile>Prelude.XML</DocumentationFile>
@@ -46,9 +50,31 @@
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="8.0.100" />
   </ItemGroup>
-  <Target Name="PostBuild" AfterTargets="Pack">
-    <Exec Command="dotnet nuget push &quot;$(MSBuildProjectDirectory)\bin\Release\prelude.*.nupkg&quot; --source &quot;https://nuget.pkg.github.com/sir-deenicus/index.json&quot; --skip-duplicate --api-key $(GITHUB_PAT)" ContinueOnError="true" />
-    <Exec Command="copy &quot;$(MSBuildProjectDirectory)\bin\Release\Prelude.*.nupkg&quot; &quot;C:\Users\cybernetic\Code\Packages\&quot;&#xD;&#xA;&#xD;&#xA;del &quot;C:\Users\cybernetic\source\repos\Prelude\Prelude\bin\Release\Prelude.*.nupkg&quot;" />
+  <Target Name="PostBuild" AfterTargets="Pack" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <PackedPackagePath>$(PackageOutputPath)$(PackageId).$(Version).nupkg</PackedPackagePath>
+    </PropertyGroup>
+    <Message Importance="High" Text="Skipping GitHub Packages push because GITHUB_PAT is not set." Condition="'$(GITHUB_PAT)' == ''" />
+    <ItemGroup Condition="'$(GITHUB_PAT)' != ''">
+      <GitHubPackagesConfigLines Include="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;" />
+      <GitHubPackagesConfigLines Include="&lt;configuration&gt;" />
+      <GitHubPackagesConfigLines Include="  &lt;packageSources&gt;" />
+      <GitHubPackagesConfigLines Include="    &lt;clear /&gt;" />
+      <GitHubPackagesConfigLines Include="    &lt;add key=&quot;github&quot; value=&quot;$(GitHubPackagesSource)&quot; /&gt;" />
+      <GitHubPackagesConfigLines Include="  &lt;/packageSources&gt;" />
+      <GitHubPackagesConfigLines Include="  &lt;packageSourceCredentials&gt;" />
+      <GitHubPackagesConfigLines Include="    &lt;github&gt;" />
+      <GitHubPackagesConfigLines Include="      &lt;add key=&quot;Username&quot; value=&quot;$(GitHubPackagesOwner)&quot; /&gt;" />
+      <GitHubPackagesConfigLines Include="      &lt;add key=&quot;ClearTextPassword&quot; value=&quot;%GITHUB_PAT%&quot; /&gt;" />
+      <GitHubPackagesConfigLines Include="    &lt;/github&gt;" />
+      <GitHubPackagesConfigLines Include="  &lt;/packageSourceCredentials&gt;" />
+      <GitHubPackagesConfigLines Include="&lt;/configuration&gt;" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(GitHubPackagesConfigPath)" Lines="@(GitHubPackagesConfigLines)" Overwrite="true" Condition="'$(GITHUB_PAT)' != '' and Exists('$(PackedPackagePath)')" />
+    <Exec Command="dotnet nuget push &quot;$(PackedPackagePath)&quot; --source github --skip-duplicate --configfile &quot;$(GitHubPackagesConfigPath)&quot;" ContinueOnError="true" Condition="'$(GITHUB_PAT)' != '' and Exists('$(PackedPackagePath)')" />
+    <Delete Files="$(GitHubPackagesConfigPath)" Condition="Exists('$(GitHubPackagesConfigPath)')" />
+    <Copy SourceFiles="$(PackedPackagePath)" DestinationFolder="$(LocalPackageCache)" Condition="Exists('$(PackedPackagePath)')" />
+    <Delete Files="$(PackedPackagePath)" Condition="Exists('$(PackedPackagePath)')" />
   </Target> 
 </Project>
 

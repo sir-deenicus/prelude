@@ -107,6 +107,222 @@ type MachineStatus<'state, 'mem, 'wait> =
       TransitionsProcessed: int
       StopReason: ExecutionStopReason<'state, 'mem, 'wait> }
 
+type ParallelBranchState<'wait> =
+    | Running
+    | Succeeded
+    | Failed
+    | Waiting of 'wait
+
+type ParallelPolicy =
+    | AllMustSucceed
+    | AnyMaySucceed
+    | PrimaryDecides of primaryName: string
+
+type ParallelGroupState<'wait> =
+    | GroupRunning
+    | GroupSucceeded
+    | GroupFailed of failedBranches: string array
+    | GroupWaiting of waitingBranches: (string * 'wait) array
+
+type ParallelBranch<'wait> =
+    { Name: string
+      Tick: unit -> ParallelBranchState<'wait> }
+
+type ParallelTickStatus<'wait> =
+    { BranchStates: (string * ParallelBranchState<'wait>) array
+      GroupState: ParallelGroupState<'wait> }
+
+type ParallelGroup<'wait> =
+    { Branches: ParallelBranch<'wait> array
+      Policy: ParallelPolicy }
+
+module ParallelBranch =
+    let create name tick =
+        { Name = name
+          Tick = tick }
+
+    let inline private runSingleStep (machine: ^machine) (transition: TransitionMsg<'state, 'mem>) : MachineStatus<'state, 'mem, 'wait> =
+        ((^machine) : (member RunSingleStep : TransitionMsg<'state, 'mem> -> MachineStatus<'state, 'mem, 'wait>) (machine, transition))
+
+    let inline private stepSingle (machine: ^machine) : MachineStatus<'state, 'mem, 'wait> =
+        ((^machine) : (member StepSingle : unit -> MachineStatus<'state, 'mem, 'wait>) (machine))
+
+    let inline private runFor (machine: ^machine) (transition: TransitionMsg<'state, 'mem>) (maxTransitions: int) : MachineStatus<'state, 'mem, 'wait> =
+        ((^machine) : (member RunFor : TransitionMsg<'state, 'mem> * int -> MachineStatus<'state, 'mem, 'wait>) (machine, transition, maxTransitions))
+
+    let inline private stepFor (machine: ^machine) (maxTransitions: int) : MachineStatus<'state, 'mem, 'wait> =
+        ((^machine) : (member StepFor : int -> MachineStatus<'state, 'mem, 'wait>) (machine, maxTransitions))
+
+    let ofMachineStatus (status: MachineStatus<'state, 'mem, 'wait>) : ParallelBranchState<'wait> =
+        match status.StopReason with
+        | ReachedExit _ -> Succeeded
+        | ExecutionStopReason.Waiting waitReason -> ParallelBranchState.Waiting waitReason
+        | Yielded
+        | TransitionBudgetReached
+        | PredicateSatisfied -> Running
+        | NoCurrentConfig -> Failed
+
+    let ofStepperWith classify name start step =
+        let mutable started = false
+        let mutable terminalState : ParallelBranchState<'wait> option = None
+
+        create name (fun () ->
+            match terminalState with
+            | Some state -> state
+            | None ->
+                let status =
+                    if started then
+                        step ()
+                    else
+                        started <- true
+                        start ()
+
+                let branchState = classify status
+
+                match branchState with
+                | Succeeded
+                | Failed -> terminalState <- Some branchState
+                | Running
+                | Waiting _ -> ()
+
+                branchState)
+
+    let ofStepper name start step =
+        ofStepperWith ofMachineStatus name start step
+
+    let inline singleStepWith classify name machine startTransition =
+        ofStepperWith classify name
+            (fun () -> runSingleStep machine startTransition)
+            (fun () -> stepSingle machine)
+
+    let inline singleStep name machine startTransition =
+        singleStepWith ofMachineStatus name machine startTransition
+
+    let inline stepBudgetWith classify name maxTransitions machine startTransition =
+        ofStepperWith classify name
+            (fun () -> runFor machine startTransition maxTransitions)
+            (fun () -> stepFor machine maxTransitions)
+
+    let inline stepBudget name maxTransitions machine startTransition =
+        stepBudgetWith ofMachineStatus name maxTransitions machine startTransition
+
+module ParallelGroup =
+    let create policy branches =
+        let branchArray = branches |> Seq.toArray
+
+        if branchArray.Length = 0 then
+            invalidArg "branches" "ParallelGroup requires at least one branch."
+
+        let branchNames = HashSet<string>()
+
+        for branch in branchArray do
+            if not (branchNames.Add(branch.Name)) then
+                invalidArg "branches" (sprintf "Parallel branch names must be unique. Duplicate: %s" branch.Name)
+
+        match policy with
+        | PrimaryDecides primaryName when not (branchNames.Contains primaryName) ->
+            invalidArg "policy" (sprintf "PrimaryDecides references an unknown branch: %s" primaryName)
+        | _ ->
+            { Branches = branchArray
+              Policy = policy }
+
+    let tick (group: ParallelGroup<'wait>) =
+        let branchStates = Array.zeroCreate group.Branches.Length
+        let failedBranches = ResizeArray<string>()
+        let waitingBranches = ResizeArray<string * 'wait>()
+        let mutable runningCount = 0
+        let mutable succeededCount = 0
+
+        for index = 0 to group.Branches.Length - 1 do
+            let branch = group.Branches[index]
+            let branchState = branch.Tick ()
+            branchStates[index] <- branch.Name, branchState
+
+            match branchState with
+            | Running ->
+                runningCount <- runningCount + 1
+            | Succeeded ->
+                succeededCount <- succeededCount + 1
+            | Failed ->
+                failedBranches.Add(branch.Name)
+            | Waiting waitReason ->
+                waitingBranches.Add(branch.Name, waitReason)
+
+        let groupState =
+            match group.Policy with
+            | AllMustSucceed ->
+                if failedBranches.Count > 0 then
+                    GroupFailed(failedBranches.ToArray())
+                elif succeededCount = group.Branches.Length then
+                    GroupSucceeded
+                elif runningCount > 0 then
+                    GroupRunning
+                elif waitingBranches.Count > 0 then
+                    GroupWaiting(waitingBranches.ToArray())
+                else
+                    GroupRunning
+            | AnyMaySucceed ->
+                if succeededCount > 0 then
+                    GroupSucceeded
+                elif failedBranches.Count = group.Branches.Length then
+                    GroupFailed(failedBranches.ToArray())
+                elif runningCount > 0 then
+                    GroupRunning
+                elif waitingBranches.Count > 0 then
+                    GroupWaiting(waitingBranches.ToArray())
+                else
+                    GroupRunning
+            | PrimaryDecides primaryName ->
+                let _, primaryState = branchStates |> Array.find (fun (name, _) -> name = primaryName)
+
+                match primaryState with
+                | Succeeded -> GroupSucceeded
+                | Failed -> GroupFailed [| primaryName |]
+                | Waiting waitReason -> GroupWaiting [| primaryName, waitReason |]
+                | Running -> GroupRunning
+
+        { BranchStates = branchStates
+          GroupState = groupState }
+
+type ParallelGroupSpec<'wait> =
+    { Policy: ParallelPolicy option
+      Branches: ResizeArray<ParallelBranch<'wait>> }
+
+type ParallelGroupBuilder() =
+    member private __.EmptySpec<'wait>() : ParallelGroupSpec<'wait> =
+        { Policy = None
+          Branches = ResizeArray() }
+
+    member this.Yield(_) =
+        this.EmptySpec()
+
+    member this.Zero() =
+        this.EmptySpec()
+
+    member __.Delay(f) =
+        f()
+
+    [<CustomOperation("policy")>]
+    member __.Policy(spec: ParallelGroupSpec<'wait>, policy) =
+        { spec with Policy = Some policy }
+
+    [<CustomOperation("branch")>]
+    member __.Branch(spec, branch: ParallelBranch<'wait>) =
+        spec.Branches.Add(branch)
+        spec
+
+    [<CustomOperation("branches")>]
+    member __.Branches(spec, branches: seq<ParallelBranch<'wait>>) =
+        for branch in branches do
+            spec.Branches.Add(branch)
+
+        spec
+
+    member __.Run(spec) =
+        ParallelGroup.create (defaultArg spec.Policy AllMustSucceed) spec.Branches
+
+let parallelGroup = ParallelGroupBuilder()
+
 type ExecutionRequest<'state, 'mem> =
     { Transition: TransitionMsg<'state, 'mem>
       Policy: ExecutionPolicy<'state, 'mem> }
@@ -220,7 +436,7 @@ type SteppableStateMachineExec<'state, 'mem, 'wait when 'state: equality>(ExitSt
                     keepRunning <- false
                 | ValueSome(Wait waitReason) ->
                     pendingTransition <- None
-                    status <- createStatus (Waiting waitReason) transitionsProcessed
+                    status <- createStatus (ExecutionStopReason.Waiting waitReason) transitionsProcessed
                     keepRunning <- false
                 | ValueNone -> invalidOp (sprintf "No transition registered for state %A" transition.NextState)
 
@@ -255,7 +471,7 @@ type SteppableStateMachineExec<'state, 'mem, 'wait when 'state: equality>(ExitSt
                         match tryResolveOutcome transition.NextState transition.Mem with
                         | ValueSome(Wait waitReason) ->
                             pendingTransition <- None
-                            status <- createStatus (Waiting waitReason) transitionsProcessed
+                            status <- createStatus (ExecutionStopReason.Waiting waitReason) transitionsProcessed
                             keepRunning <- false
                         | ValueSome(Continue nextTransition) ->
                             transitionsProcessed <- transitionsProcessed + 1

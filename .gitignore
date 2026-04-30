@@ -261,3 +261,4 @@ __pycache__/
 *.pyc
 /Prelude/Prelude.XML
 Prelude/changes.txt
+Prelude/.kilo/agent-manager.json

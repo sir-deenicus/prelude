@@ -147,18 +147,24 @@ module Array =
 
 module Seq =
     let longestCommonSubSeqTrace (seq1: 'a seq) (seq2: 'a seq) =
+        // Convert sequences to arrays for O(1) indexing
         let vector1, vector2 = Seq.toArray seq1, Seq.toArray seq2
+        // DP table: dp[i,j] = LCS length of vector1[0..i-1] and vector2[0..j-1]
         let table = Array2D.create (vector1.Length + 1) (vector2.Length + 1) 0
 
+        // Fill table using standard LCS dynamic programming recurrence:
+        //   dp[i,j] = dp[i-1,j-1] + 1           if chars match
+        //   dp[i,j] = max(dp[i-1,j], dp[i,j-1]) otherwise
         table
         |> Array2D.iteri (fun i j a ->
             if i = 0 || j = 0 then
-                ()
+                () // first row/col stays 0 (empty prefix)
             else if vector1.[i - 1] = vector2.[j - 1] then
                 table.[i, j] <- table.[i - 1, j - 1] + 1
             else
                 table.[i, j] <- max table.[i, j - 1] table.[i - 1, j])
 
+        // Build a trace from the DP table for optimal backtracing
         LcsTrace.create vector1 vector2 table
 
     let readLongestCommonSubSeq trace =
