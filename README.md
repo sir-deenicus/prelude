@@ -112,7 +112,7 @@ String and sequence similarity metrics.
 
 ---
 
-### `Prelude.Pareto`
+### `Prelude.Math.Pareto`
 Multi-objective ranking and Pareto frontier utilities.
 
 - `Pareto.findFrontier` — filter a sequence to its non-dominated Pareto front

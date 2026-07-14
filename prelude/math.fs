@@ -22,6 +22,58 @@ let inline isPowerOf2 (ToFloat x) =
     let y = log2 x
     round 8 (y - floor y) = 0.
 
+[<RequireQualifiedAccess>]
+module Pareto =
+    let private partitionFrontier isDominatedBy points =
+        points
+        |> List.partition (fun candidate ->
+            points
+            |> List.exists (isDominatedBy candidate)
+            |> not)
+
+    /// Returns the points that are not strictly dominated by any other point.
+    /// isDominatedBy candidate other must be irreflexive and return true when
+    /// other strictly dominates candidate.
+    let findFrontier isDominatedBy points =
+        points
+        |> Seq.toList
+        |> partitionFrontier isDominatedBy
+        |> fst
+
+    /// Assigns rank 1 to the Pareto frontier, then ranks successive frontiers.
+    let calculateRanks isDominatedBy points =
+        let rec assignRanks remainingPoints currentRank acc =
+            match remainingPoints with
+            | [] ->
+                acc
+                |> List.rev
+                |> List.concat
+            | _ ->
+                let frontier, newRemaining =
+                    partitionFrontier isDominatedBy remainingPoints
+
+                match frontier with
+                | [] ->
+                    invalidArg
+                        (nameof isDominatedBy)
+                        "The dominance relation is cyclic or is not strict."
+                | _ ->
+                    let newAcc =
+                        (frontier
+                         |> List.map (fun point -> point, currentRank))
+                        :: acc
+
+                    assignRanks newRemaining (currentRank + 1) newAcc
+
+        assignRanks (Seq.toList points) 1 []
+
+    let compactParetoEfficiency paretoRanks =
+        paretoRanks
+        |> List.groupBy snd
+        |> List.sortBy fst
+        |> List.map (fun (rank, points) ->
+            rank, points |> List.map fst)
+
 //***************************BASIC STATS******************//
 module Stats =
     type SummaryStats =

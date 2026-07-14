@@ -1,0 +1,15 @@
+Request: allow graph renderers to rename the implicit root node.
+
+Current VisualProb graph rendering inserts a fixed root node named "root". For
+literate/tutorial output, it would be useful to pass a display name for that
+root, for example "control: coast" or "start", without post-processing the graph
+or manually rebuilding edges.
+
+Desired shape:
+
+    GraphBuilder.render(paths, zero, RootName = "control: coast")
+
+or an equivalent option on the Prelude/Dagre rendering path.
+
+This keeps VisualPath CE examples pedagogical: the graph can say what the root
+means in the current model while still using the shared graph builder.
